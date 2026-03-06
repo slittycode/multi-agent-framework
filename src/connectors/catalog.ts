@@ -37,7 +37,9 @@ function normalizeConnectorRecord(value: unknown): ConnectorRecord {
     typeof providerId !== "string" ||
     (authMethod !== "api-key" && authMethod !== "chatgpt-oauth") ||
     typeof defaultModel !== "string" ||
-    (credentialSource !== "env" && credentialSource !== "keychain") ||
+    (credentialSource !== "env" &&
+      credentialSource !== "keychain" &&
+      credentialSource !== "codex-app-server") ||
     typeof credentialRef !== "string" ||
     (lastCertificationStatus !== "never" &&
       lastCertificationStatus !== "passed" &&

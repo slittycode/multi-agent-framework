@@ -331,7 +331,10 @@ export async function runCommand(args: string[]): Promise<number> {
       env: {
         ...(process.env as Record<string, string | undefined>),
         ...resolution.envOverlay
-      }
+      },
+      connectorByProviderId: resolution.connector
+        ? { [resolution.connector.providerId]: resolution.connector }
+        : undefined
     });
 
     const runConfig: NonNullable<Parameters<typeof runDiscussion>[0]["config"]> = {

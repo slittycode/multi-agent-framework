@@ -1,7 +1,7 @@
 import type { ProviderId } from "../types/provider";
 
 export type ConnectorAuthMethod = "api-key" | "chatgpt-oauth";
-export type ConnectorCredentialSource = "env" | "keychain";
+export type ConnectorCredentialSource = "env" | "keychain" | "codex-app-server";
 export type ConnectorCertificationStatus = "never" | "passed" | "failed" | "blocked";
 export type ConnectorRuntimeStatus = "ready" | "blocked";
 export type ConnectorRuntimeStatusReason =

@@ -31,7 +31,7 @@ export async function certifyConnector(input: {
   const outputDir = resolve(process.cwd(), input.outputDir ?? "./runs/auth");
   await mkdir(outputDir, { recursive: true });
 
-  const provider = createLiveProviderClient(input.connector.providerId, input.env);
+  const provider = createLiveProviderClient(input.connector.providerId, input.env, input.connector);
   const agent: Agent = {
     id: "auth-certifier",
     name: "Auth Certifier",

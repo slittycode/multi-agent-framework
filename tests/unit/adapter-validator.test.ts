@@ -231,6 +231,22 @@ describe("validateDomainAdapter", () => {
     expect(result.errors.some((error) => error.code === "INVALID_CITATION_CONFIG")).toBe(true);
   });
 
+  test("returns invalid orchestrator execution mode errors for top-level parallel", () => {
+    const candidate = {
+      ...baseAdapter,
+      orchestrator: {
+        executionMode: "parallel"
+      }
+    };
+
+    const result = validateDomainAdapter(candidate);
+
+    expect(result.valid).toBe(false);
+    expect(
+      result.errors.some((error) => error.code === "INVALID_ORCHESTRATOR_EXECUTION_MODE")
+    ).toBe(true);
+  });
+
   test("returns visibilityPolicy participant errors", () => {
     const candidate = {
       ...baseAdapter,

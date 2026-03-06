@@ -336,15 +336,11 @@ export function validateDomainAdapter(candidate: unknown): AdapterValidationResu
       });
     } else {
       const executionMode = orchestrator.executionMode;
-      if (
-        executionMode !== undefined &&
-        executionMode !== "sequential" &&
-        executionMode !== "parallel"
-      ) {
+      if (executionMode !== undefined && executionMode !== "sequential") {
         errors.push({
           code: "INVALID_ORCHESTRATOR_EXECUTION_MODE",
           path: "$.orchestrator.executionMode",
-          message: 'orchestrator.executionMode must be "sequential" or "parallel".',
+          message: 'orchestrator.executionMode must be "sequential".',
           value: executionMode
         });
       }

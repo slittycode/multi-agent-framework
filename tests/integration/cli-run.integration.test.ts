@@ -7,6 +7,18 @@ function projectRoot(): string {
   return resolve(import.meta.dir, "..", "..");
 }
 
+function mockCodexAppServerEnv(scenario = "success"): Record<string, string | undefined> {
+  return {
+    MAF_CODEX_APP_SERVER_COMMAND: process.execPath,
+    MAF_CODEX_APP_SERVER_ARGS: JSON.stringify([
+      "run",
+      join(projectRoot(), "tests", "fixtures", "mock-codex-app-server.ts")
+    ]),
+    MAF_DISABLE_BROWSER_OPEN: "1",
+    MOCK_CODEX_APP_SERVER_SCENARIO: scenario
+  };
+}
+
 function runCli(
   args: string[],
   envOverrides: Record<string, string | undefined> = {},
@@ -20,7 +32,11 @@ function runCli(
     "OPENAI_API_KEY",
     "MAF_STATE_DIR",
     "MAF_CREDENTIAL_STORE_BACKEND",
-    "MAF_CREDENTIAL_STORE_FILE"
+    "MAF_CREDENTIAL_STORE_FILE",
+    "MAF_CODEX_APP_SERVER_COMMAND",
+    "MAF_CODEX_APP_SERVER_ARGS",
+    "MAF_DISABLE_BROWSER_OPEN",
+    "MOCK_CODEX_APP_SERVER_SCENARIO"
   ]) {
     delete env[name];
   }
@@ -699,6 +715,88 @@ describe("integration/cli-run", () => {
       expect(report.resolvedExecutionMode).toBe("mock");
       expect(report.certificationScope).toBe("baseline");
       expect(report.activeConnectorId).toBe("openai-oauth");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  test("benchmark --all-connectors skips blocked connectors and records skip metadata", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "maf-benchmark-all-connectors-live-state-"));
+    const outputDir = await mkdtemp(join(tmpdir(), "maf-benchmark-all-connectors-live-output-"));
+
+    try {
+      await Bun.write(
+        join(stateDir, "connectors.json"),
+        `${JSON.stringify(
+          {
+            schemaVersion: 1,
+            activeConnectorId: "openai-oauth",
+            connectors: [
+              {
+                id: "openai-blocked",
+                providerId: "openai",
+                authMethod: "chatgpt-oauth",
+                defaultModel: "gpt-4.1-mini",
+                credentialSource: "codex-app-server",
+                credentialRef: "openai-chatgpt",
+                lastCertificationStatus: "failed",
+                runtimeStatus: "blocked",
+                runtimeStatusReason: "auth_method_not_supported"
+              },
+              {
+                id: "openai-oauth",
+                providerId: "openai",
+                authMethod: "chatgpt-oauth",
+                defaultModel: "gpt-4.1-mini",
+                credentialSource: "codex-app-server",
+                credentialRef: "openai-chatgpt",
+                lastCertificationStatus: "never",
+                runtimeStatus: "ready"
+              }
+            ]
+          },
+          null,
+          2
+        )}\n`
+      );
+
+      const result = runCli(
+        [
+          "benchmark",
+          "--execution-mode",
+          "live",
+          "--all-connectors",
+          "--output-dir",
+          outputDir
+        ],
+        {
+          MAF_STATE_DIR: stateDir,
+          ...mockCodexAppServerEnv()
+        }
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Evaluation Tier: live_certification");
+
+      const files = await readdir(outputDir);
+      const reportName = files.find((name) => /^v02-benchmark-\d+\.json$/.test(name));
+      expect(reportName).toBeDefined();
+
+      const reportRaw = await readFile(join(outputDir, reportName as string), "utf8");
+      const report = JSON.parse(reportRaw) as {
+        resolvedExecutionMode: string;
+        certificationScope: string;
+        providerIds: string[];
+        skippedConnectorIds?: string[];
+        skippedConnectorReasons?: Record<string, string>;
+      };
+
+      expect(report.resolvedExecutionMode).toBe("live");
+      expect(report.certificationScope).toBe("all_connectors");
+      expect(report.providerIds).toEqual(["openai"]);
+      expect(report.skippedConnectorIds).toContain("openai-blocked");
+      expect(report.skippedConnectorReasons?.["openai-blocked"]).toContain("auth_method_not_supported");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
       await rm(outputDir, { recursive: true, force: true });

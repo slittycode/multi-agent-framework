@@ -9,10 +9,8 @@ import {
   type ConnectorCatalog,
   type ConnectorRecord
 } from "../../connectors/types";
+import { CodexAppServerClient } from "../../providers/clients/codex-app-server";
 import { describeProviderSupport, getDefaultModelForProvider } from "../../providers/provider-support";
-
-const OPENAI_CHATGPT_OAUTH_TRACKING_URL =
-  "https://github.com/slittycode/multi-agent-framework/issues/1";
 
 type AuthSubcommand = "login" | "status" | "logout" | "certify";
 
@@ -161,39 +159,88 @@ async function handleAuthLogin(options: AuthLoginOptions): Promise<number> {
       throw new Error(`auth login --method chatgpt-oauth is only supported for provider openai.`);
     }
 
-    const catalog = await loadConnectorCatalog();
-    const connector: ConnectorRecord = {
-      id: connectorId,
-      providerId: options.provider,
-      authMethod: "chatgpt-oauth",
-      defaultModel: options.model?.trim() || (getDefaultModelForProvider(options.provider) as string),
-      credentialSource: "keychain",
-      credentialRef: connectorId,
-      lastCertificationStatus: "blocked",
-      runtimeStatus: "blocked",
-      runtimeStatusReason: "oauth_not_implemented",
-      trackedIssueUrl: OPENAI_CHATGPT_OAUTH_TRACKING_URL
-    };
+    const appServer = new CodexAppServerClient({
+      env: process.env as Record<string, string | undefined>
+    });
 
-    const updatedCatalog = upsertConnector(
-      {
-        ...catalog,
-        activeConnectorId:
-          catalog.activeConnectorId === connectorId ? undefined : catalog.activeConnectorId
-      },
-      connector
-    );
-    await saveConnectorCatalog(updatedCatalog);
+    try {
+      const initialAccount = await appServer.getAccount({ refresh: true });
+      if (!initialAccount.account || initialAccount.account.type !== "chatgpt") {
+        const login = await appServer.loginWithChatGpt();
+        console.log(`ChatGPT login URL: ${login.authUrl}`);
+        if (!login.browserOpened) {
+          console.log("Browser auto-open was skipped; open the login URL manually if needed.");
+        }
+      }
 
-    console.log(`Stored blocked connector placeholder: ${connectorId}`);
-    console.log(`Provider: ${options.provider}`);
-    console.log(`Auth method: ${method}`);
-    console.log(`Runtime status: blocked (${connector.runtimeStatusReason})`);
-    console.log(`Tracking: ${OPENAI_CHATGPT_OAUTH_TRACKING_URL}`);
-    if (options.use) {
-      console.log("Connector was not activated because it is blocked.");
+      const confirmedAccount = await appServer.getAccount({ refresh: true });
+      if (!confirmedAccount.account || confirmedAccount.account.type !== "chatgpt") {
+        throw new Error("OpenAI ChatGPT OAuth login did not produce an authenticated ChatGPT account.");
+      }
+
+      const resolvedModel =
+        options.model?.trim() || (await appServer.getDefaultModel()).model;
+
+      const catalog = await loadConnectorCatalog();
+      const connector: ConnectorRecord = {
+        id: connectorId,
+        providerId: options.provider,
+        authMethod: "chatgpt-oauth",
+        defaultModel: resolvedModel,
+        credentialSource: "codex-app-server",
+        credentialRef: "openai-chatgpt",
+        lastCertificationStatus: "never",
+        runtimeStatus: "ready"
+      };
+
+      let updatedCatalog = upsertConnector(catalog, connector);
+      if (options.use) {
+        updatedCatalog = {
+          ...updatedCatalog,
+          activeConnectorId: connectorId
+        };
+      }
+
+      await saveConnectorCatalog(updatedCatalog);
+
+      console.log(`Stored connector: ${connectorId}`);
+      console.log(`Provider: ${options.provider}`);
+      console.log(`Auth method: ${method}`);
+      console.log(`Default model: ${connector.defaultModel}`);
+      if (confirmedAccount.account.email) {
+        console.log(
+          `ChatGPT account: ${confirmedAccount.account.email}${
+            confirmedAccount.account.planType ? ` (${confirmedAccount.account.planType})` : ""
+          }`
+        );
+      }
+
+      if (options.noCertify) {
+        return 0;
+      }
+
+      const result = await certifyConnector({
+        connector: {
+          ...connector,
+          ephemeral: false
+        },
+        env: process.env as Record<string, string | undefined>,
+        outputDir: options.outputDir
+      });
+
+      updatedCatalog = upsertConnector(updatedCatalog, {
+        ...connector,
+        lastCertifiedAt: result.artifact.generatedAt,
+        lastCertificationStatus: result.artifact.passed ? "passed" : "failed"
+      });
+      await saveConnectorCatalog(updatedCatalog);
+
+      console.log(`Certification: ${result.artifact.passed ? "passed" : "failed"}`);
+      console.log(`Auth artifact: ${result.artifactPath}`);
+      return result.artifact.passed ? 0 : 1;
+    } finally {
+      await appServer.disconnect();
     }
-    return 1;
   }
 
   if (method !== "api-key") {
@@ -239,6 +286,7 @@ async function handleAuthLogin(options: AuthLoginOptions): Promise<number> {
 
   console.log(`Stored connector: ${connectorId}`);
   console.log(`Provider: ${options.provider}`);
+  console.log(`Default model: ${connector.defaultModel}`);
 
   if (options.noCertify) {
     return 0;
@@ -306,9 +354,32 @@ async function handleAuthStatus(connectorId?: string): Promise<number> {
   }
 
   const credentialAvailable =
-    connector.credentialSource === "env"
-      ? Boolean((process.env as Record<string, string | undefined>)[connector.credentialRef]?.trim())
-      : Boolean(await credentialStore.get(connector.credentialRef));
+    connector.credentialSource === "codex-app-server"
+      ? await (async () => {
+          const appServer = new CodexAppServerClient({
+            env: process.env as Record<string, string | undefined>
+          });
+          try {
+            const account = await appServer.getAccount({ refresh: true });
+            if (account.account?.type === "chatgpt") {
+              if (account.account.email) {
+                console.log(
+                  `ChatGPT account: ${account.account.email}${
+                    account.account.planType ? ` (${account.account.planType})` : ""
+                  }`
+                );
+              }
+              return true;
+            }
+
+            return false;
+          } finally {
+            await appServer.disconnect();
+          }
+        })()
+      : connector.credentialSource === "env"
+        ? Boolean((process.env as Record<string, string | undefined>)[connector.credentialRef]?.trim())
+        : Boolean(await credentialStore.get(connector.credentialRef));
 
   console.log(`Credential source: ${connector.credentialSource}`);
   console.log(`Credential available: ${credentialAvailable ? "yes" : "no"}`);
@@ -333,13 +404,38 @@ async function handleAuthLogout(connectorId?: string): Promise<number> {
   }
 
   const credentialStore = createCredentialStore(process.env as Record<string, string | undefined>);
-  await credentialStore.delete(connector.credentialRef);
+  const removedConnectorIds = new Set(
+    connector.credentialSource === "codex-app-server"
+      ? catalog.connectors
+          .filter(
+            (candidate) =>
+              candidate.providerId === connector.providerId &&
+              candidate.credentialSource === "codex-app-server"
+          )
+          .map((candidate) => candidate.id)
+      : [resolvedConnectorId]
+  );
+
+  if (connector.credentialSource === "codex-app-server") {
+    const appServer = new CodexAppServerClient({
+      env: process.env as Record<string, string | undefined>
+    });
+    try {
+      await appServer.logout();
+    } finally {
+      await appServer.disconnect();
+    }
+  } else {
+    await credentialStore.delete(connector.credentialRef);
+  }
 
   const updatedCatalog: ConnectorCatalog = {
     ...catalog,
     activeConnectorId:
-      catalog.activeConnectorId === resolvedConnectorId ? undefined : catalog.activeConnectorId,
-    connectors: catalog.connectors.filter((candidate) => candidate.id !== resolvedConnectorId)
+      catalog.activeConnectorId && removedConnectorIds.has(catalog.activeConnectorId)
+        ? undefined
+        : catalog.activeConnectorId,
+    connectors: catalog.connectors.filter((candidate) => !removedConnectorIds.has(candidate.id))
   };
   await saveConnectorCatalog(updatedCatalog);
 

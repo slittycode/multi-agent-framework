@@ -174,7 +174,7 @@ describe("integration/orchestrator-run", () => {
         topic: "Test topic",
         providerRegistry: new ProviderRegistry([new MockProvider()]),
         config: {
-          executionMode: "parallel"
+          executionMode: "parallel" as unknown as "sequential"
         }
       })
     ).rejects.toBeInstanceOf(OrchestratorConfigError);

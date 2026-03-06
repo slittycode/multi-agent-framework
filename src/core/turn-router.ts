@@ -151,7 +151,7 @@ export function filterVisibleTranscriptForAgent(
       return true;
     }
 
-    // TODO: Split visibility policy into receiveFrom/publishTo for asymmetric routing.
+    // visibilityPolicy.participants is an explicit symmetric send/receive allowlist.
     const receiverIsParticipant = participants.includes(receiverAgentId);
     if (!receiverIsParticipant) {
       return false;

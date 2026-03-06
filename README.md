@@ -40,9 +40,8 @@ bun run start -- connector use --connector gemini-main
 Development gates:
 
 ```bash
-bun run typecheck
-bun test
-bun run build
+bun run verify:offline
+bun run verify:live
 ```
 
 ## Connector Model
@@ -78,11 +77,14 @@ If multiple live env connectors are present and none is selected, the CLI fails 
 | --- | --- | --- | --- | --- | --- | --- |
 | `gemini` | Yes | Yes | `api-key` | `env`, `keychain` | `gemini-2.5-flash` | Uses `GEMINI_API_KEY` |
 | `kimi` | Yes | Yes | `api-key` | `env`, `keychain` | `moonshot-v1-8k` | Uses `KIMI_API_KEY`; optional `KIMI_BASE_URL` |
-| `openai` | Yes | Yes | declared: `api-key`, `chatgpt-oauth`; implemented: `api-key` | `env`, `keychain` | `gpt-4.1-mini` | Uses `OPENAI_API_KEY` via the OpenAI Responses API; ChatGPT OAuth is blocked pending [issue #1](https://github.com/slittycode/multi-agent-framework/issues/1) |
+| `openai` | Yes | Yes | `api-key`, `chatgpt-oauth` | `env`, `keychain`, `codex-app-server` | `gpt-4.1-mini` / app-server default | Uses `OPENAI_API_KEY` via the OpenAI Responses API or the local `codex app-server` ChatGPT browser flow |
 | `claude` | Yes | No | none in this pass | none in this pass | n/a | Recognized but unsupported for live execution |
 | `mock` | Yes | Mock only | n/a | n/a | n/a | Baseline regression coverage only |
 
-OpenAI support in this version is API-key runtime authentication. `auth login --provider openai --method chatgpt-oauth` creates a blocked placeholder connector so the missing OAuth path is explicit and cannot be mistaken for a working live connector.
+OpenAI supports two live paths in this version:
+
+- `api-key`: `OPENAI_API_KEY` or a stored keychain-backed connector using the OpenAI Responses API
+- `chatgpt-oauth`: a stored connector backed by the local `codex app-server` ChatGPT browser flow
 
 ## Environment
 
@@ -91,9 +93,11 @@ Copy values from `.env.example` into your shell or local env file before live ru
 - `GEMINI_API_KEY`
 - `KIMI_API_KEY`
 - `KIMI_BASE_URL`
-- `OPENAI_API_KEY`
+- `OPENAI_API_KEY` when using OpenAI API-key connectors
 - `RUN_LIVE_PROVIDER_TESTS`
 - `RUN_BENCHMARK_TESTS`
+
+For OpenAI ChatGPT OAuth, install the `codex` CLI and ensure the local `codex app-server` login flow can open a browser session.
 
 Optional local/test overrides:
 
@@ -118,6 +122,20 @@ This will:
 - store the secret in the OS credential store
 - certify the connector immediately unless `--no-certify` is supplied
 
+Create and select an OpenAI ChatGPT OAuth connector:
+
+```bash
+bun run start -- auth login --provider openai --method chatgpt-oauth --connector-id openai-oauth --use
+```
+
+This will:
+
+- use the local `codex app-server` ChatGPT login flow
+- open a browser login URL when needed
+- use the current `codex app-server` default model unless `--model` is supplied
+- store only non-secret connector metadata in `.multi-agent-framework/connectors.json`
+- certify the connector immediately unless `--no-certify` is supplied
+
 Check current status:
 
 ```bash
@@ -136,11 +154,7 @@ Switch the active connector without re-entering credentials:
 bun run start -- connector use --connector kimi-main
 ```
 
-Record the missing OpenAI OAuth path explicitly without creating a runnable connector:
-
-```bash
-bun run start -- auth login --provider openai --method chatgpt-oauth --connector-id openai-oauth
-```
+Environment-backed connectors remain ephemeral. You can run against `gemini-env`, `kimi-env`, or `openai-env` explicitly, but `connector use` only persists stored connectors created with `auth login`.
 
 ## Run Semantics
 
@@ -182,6 +196,8 @@ Report fields include:
 - `activeConnectorId`
 - `credentialSource`
 - `certificationScope`
+- `skippedConnectorIds`
+- `skippedConnectorReasons`
 - `rubricVersion`
 - per-entry actionability subscores
 - `failureReasons`
@@ -192,7 +208,7 @@ By default:
 
 - `benchmark` in `mock` or mock-resolved `auto` mode stays in `baseline`
 - `benchmark` in live mode certifies only the resolved connector
-- `benchmark --all-connectors` runs the same matrix across every configured live connector
+- `benchmark --all-connectors` runs the same matrix across every configured live connector and records skipped blocked/non-runnable connectors in the report
 
 Token budget is reported separately from actionability:
 
@@ -253,6 +269,13 @@ bun run start -- auth login --provider openai --method api-key --use
 bun run start -- run --adapter-id general-debate --topic "Should teams default to async communication?"
 ```
 
+Connector-backed live run with ChatGPT OAuth:
+
+```bash
+bun run start -- auth login --provider openai --method chatgpt-oauth --use
+bun run start -- run --adapter-id general-debate --topic "Should teams default to async communication?"
+```
+
 Baseline benchmark:
 
 ```bash
@@ -273,7 +296,9 @@ bun run start -- benchmark --execution-mode live --all-connectors --output-dir .
 
 ## Current Limitations
 
-- Standalone ChatGPT/Codex OAuth is not implemented here. OpenAI runtime auth is API-key based in this pass.
+- OpenAI ChatGPT OAuth depends on a working local `codex app-server` installation and an interactive browser-capable login environment.
 - `claude` remains a recognized provider id but is intentionally unsupported for live execution.
+- Top-level orchestrator execution remains `sequential` only. Use phase-level `fanout` for the supported concurrency model.
+- `visibilityPolicy.participants` is a symmetric allowlist for both send and receive visibility in this pass.
 - Live certification still depends on external provider health, quotas, and credentials.
 - The framework can improve confidence across a broad topic matrix, but it cannot honestly guarantee correctness for every possible topic. The practical claim is bounded to the built-in matrix, smoke tests, and explicit failure diagnostics.

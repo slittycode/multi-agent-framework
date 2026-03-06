@@ -1,7 +1,9 @@
 import type { DomainAdapter } from "../types";
 import type { ProviderId } from "../types/provider";
+import type { AvailableConnector } from "../connectors/types";
 import { GeminiProviderClient } from "./clients/gemini";
 import { KimiProviderClient } from "./clients/kimi";
+import { OpenAIChatGptOAuthProviderClient } from "./clients/openai-chatgpt-oauth";
 import { OpenAIProviderClient } from "./clients/openai";
 import { MockProvider } from "./mock-provider";
 import {
@@ -25,6 +27,7 @@ export interface CreateProviderRegistryForRunInput {
   adapter: DomainAdapter;
   providerMode: ProviderMode;
   env?: Record<string, string | undefined>;
+  connectorByProviderId?: Partial<Record<ProviderId, AvailableConnector>>;
 }
 
 interface CredentialRequirement {
@@ -50,7 +53,14 @@ export function collectRequiredProviderIds(adapter: DomainAdapter): ProviderId[]
   return [...required];
 }
 
-export function getCredentialRequirement(providerId: ProviderId): CredentialRequirement | null {
+export function getCredentialRequirement(
+  providerId: ProviderId,
+  connector?: Pick<AvailableConnector, "credentialSource">
+): CredentialRequirement | null {
+  if (connector?.credentialSource === "codex-app-server") {
+    return null;
+  }
+
   const support = describeProviderSupport(providerId);
   return support.requiredEnv.length > 0 ? { requiredEnv: support.requiredEnv } : null;
 }
@@ -65,8 +75,12 @@ function assertSupportedLiveProvider(providerId: ProviderId): void {
   }
 }
 
-function assertCredentials(providerId: ProviderId, env: Record<string, string | undefined>): void {
-  const requirement = getCredentialRequirement(providerId);
+function assertCredentials(
+  providerId: ProviderId,
+  env: Record<string, string | undefined>,
+  connector?: AvailableConnector
+): void {
+  const requirement = getCredentialRequirement(providerId, connector);
   if (!requirement || requirement.requiredEnv.length === 0) {
     return;
   }
@@ -94,7 +108,8 @@ function createMockRegistry(adapter: DomainAdapter): ProviderRegistry {
 
 export function createLiveProviderClient(
   providerId: ProviderId,
-  env: Record<string, string | undefined>
+  env: Record<string, string | undefined>,
+  connector?: AvailableConnector
 ) {
   switch (providerId) {
     case "gemini":
@@ -105,6 +120,11 @@ export function createLiveProviderClient(
         baseURL: env.KIMI_BASE_URL
       });
     case "openai":
+      if (connector?.authMethod === "chatgpt-oauth" || connector?.credentialSource === "codex-app-server") {
+        return new OpenAIChatGptOAuthProviderClient({
+          env
+        });
+      }
       return new OpenAIProviderClient({
         apiKey: env.OPENAI_API_KEY
       });
@@ -116,7 +136,8 @@ export function createLiveProviderClient(
 function createLiveRegistry(
   adapter: DomainAdapter,
   env: Record<string, string | undefined>,
-  allowMockProviders: boolean
+  allowMockProviders: boolean,
+  connectorByProviderId?: Partial<Record<ProviderId, AvailableConnector>>
 ): ProviderRegistry {
   const registry = new ProviderRegistry();
   const requiredProviderIds = collectRequiredProviderIds(adapter);
@@ -132,13 +153,14 @@ function createLiveRegistry(
     }
 
     assertSupportedLiveProvider(providerId);
-    assertCredentials(providerId, env);
+    const connector = connectorByProviderId?.[providerId];
+    assertCredentials(providerId, env, connector);
 
     if (!isProviderImplemented(providerId)) {
       throw new ProviderNotImplementedError(providerId);
     }
 
-    registry.register(createLiveProviderClient(providerId, env), { replace: false });
+    registry.register(createLiveProviderClient(providerId, env, connector), { replace: false });
   }
 
   return registry;
@@ -147,15 +169,16 @@ function createLiveRegistry(
 export function createProviderRegistryForRun({
   adapter,
   providerMode,
-  env = process.env as Record<string, string | undefined>
+  env = process.env as Record<string, string | undefined>,
+  connectorByProviderId
 }: CreateProviderRegistryForRunInput): ProviderRegistry {
   switch (providerMode) {
     case "mock":
       return createMockRegistry(adapter);
     case "live":
-      return createLiveRegistry(adapter, env, false);
+      return createLiveRegistry(adapter, env, false, connectorByProviderId);
     case "auto":
-      return createLiveRegistry(adapter, env, true);
+      return createLiveRegistry(adapter, env, true, connectorByProviderId);
     default:
       throw new UnsupportedProviderModeError(providerMode);
   }

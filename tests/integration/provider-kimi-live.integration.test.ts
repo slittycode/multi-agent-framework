@@ -11,7 +11,9 @@ const shouldRunLiveTest =
 const runOrSkip = shouldRunLiveTest ? test : test.skip;
 
 describe("integration/provider-kimi-live", () => {
-  runOrSkip("generates content with real Kimi API when explicitly enabled", async () => {
+  runOrSkip(
+    "generates content with real Kimi API when explicitly enabled",
+    async () => {
     const apiKey = process.env.KIMI_API_KEY as string;
     const provider = new KimiProviderClient({
       apiKey,
@@ -47,5 +49,7 @@ describe("integration/provider-kimi-live", () => {
       expect(errorMessage).not.toContain(apiKey);
       throw error;
     }
-  });
+    },
+    30_000
+  );
 });

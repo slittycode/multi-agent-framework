@@ -11,7 +11,9 @@ const shouldRunLiveTest =
 const runOrSkip = shouldRunLiveTest ? test : test.skip;
 
 describe("integration/provider-gemini-live", () => {
-  runOrSkip("generates content with real Gemini API when explicitly enabled", async () => {
+  runOrSkip(
+    "generates content with real Gemini API when explicitly enabled",
+    async () => {
     const apiKey = process.env.GEMINI_API_KEY as string;
     const provider = new GeminiProviderClient({ apiKey });
 
@@ -44,5 +46,7 @@ describe("integration/provider-gemini-live", () => {
       expect(errorMessage).not.toContain(apiKey);
       throw error;
     }
-  });
+    },
+    30_000
+  );
 });

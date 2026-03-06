@@ -100,6 +100,8 @@ interface BenchmarkReport {
   certificationMeanThreshold?: number;
   meanInputTokens: number;
   meanActionabilityScore: number;
+  skippedConnectorIds?: string[];
+  skippedConnectorReasons?: Record<string, string>;
   entries: BenchmarkReportEntry[];
 }
 
@@ -413,6 +415,8 @@ async function buildBenchmarkProfiles(
   activeConnectorId?: string;
   certificationScope: "baseline" | "single_connector" | "all_connectors";
   resolvedExecutionMode: "mock" | "live";
+  skippedConnectorIds?: string[];
+  skippedConnectorReasons?: Record<string, string>;
   profiles: BenchmarkProviderProfile[];
 }> {
   const credentialStore = createCredentialStore(env);
@@ -435,32 +439,48 @@ async function buildBenchmarkProfiles(
   if (options.allConnectors) {
     const available = await listAvailableConnectors({ cwd: process.cwd(), env });
     if (available.connectors.length === 0) {
-      throw new Error("No live connectors are available for --all-connectors.");
+      throw new Error("No runnable live connectors are available for --all-connectors.");
     }
 
     const profiles: BenchmarkProviderProfile[] = [];
+    const skippedConnectorReasons: Record<string, string> = {};
     for (const connector of available.connectors) {
-      const resolved = await resolveConnectorById({
-        connectorId: connector.id,
-        cwd: process.cwd(),
-        env,
-        credentialStore
-      });
-      profiles.push({
-        connector: resolved.connector,
-        connectorId: resolved.connector.id,
-        providerId: resolved.connector.providerId,
-        label: resolved.connector.id,
-        credentialSource: resolved.connector.credentialSource,
-        envOverlay: resolved.envOverlay,
-        resolvedExecutionMode: "live"
-      });
+      try {
+        const resolved = await resolveConnectorById({
+          connectorId: connector.id,
+          cwd: process.cwd(),
+          env,
+          credentialStore
+        });
+        profiles.push({
+          connector: resolved.connector,
+          connectorId: resolved.connector.id,
+          providerId: resolved.connector.providerId,
+          label: resolved.connector.id,
+          credentialSource: resolved.connector.credentialSource,
+          envOverlay: resolved.envOverlay,
+          resolvedExecutionMode: "live"
+        });
+      } catch (error) {
+        skippedConnectorReasons[connector.id] =
+          error instanceof Error ? error.message : "Connector could not be materialized.";
+      }
+    }
+
+    if (profiles.length === 0) {
+      throw new Error("No runnable live connectors are available for --all-connectors.");
     }
 
     return {
       activeConnectorId: available.activeConnectorId,
       certificationScope: "all_connectors",
       resolvedExecutionMode: "live",
+      ...(Object.keys(skippedConnectorReasons).length > 0
+        ? {
+            skippedConnectorIds: Object.keys(skippedConnectorReasons),
+            skippedConnectorReasons
+          }
+        : {}),
       profiles
     };
   }
@@ -564,7 +584,10 @@ export async function benchmarkCommand(args: string[]): Promise<number> {
           env: {
             ...env,
             ...profile.envOverlay
-          }
+          },
+          connectorByProviderId: profile.connector
+            ? { [profile.connector.providerId]: profile.connector }
+            : undefined
         });
         const adapterTopics = BENCHMARK_TOPICS_BY_ADAPTER[adapterId];
 
@@ -756,6 +779,12 @@ export async function benchmarkCommand(args: string[]): Promise<number> {
         : {}),
       meanInputTokens: Number(meanInputTokens.toFixed(2)),
       meanActionabilityScore: Number(meanActionabilityScore.toFixed(2)),
+      ...(profileResolution.skippedConnectorIds?.length
+        ? {
+            skippedConnectorIds: profileResolution.skippedConnectorIds,
+            skippedConnectorReasons: profileResolution.skippedConnectorReasons
+          }
+        : {}),
       entries: reportEntries
     };
 

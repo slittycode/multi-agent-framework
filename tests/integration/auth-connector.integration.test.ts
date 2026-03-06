@@ -7,6 +7,18 @@ function projectRoot(): string {
   return resolve(import.meta.dir, "..", "..");
 }
 
+function mockCodexAppServerEnv(scenario = "success"): Record<string, string | undefined> {
+  return {
+    MAF_CODEX_APP_SERVER_COMMAND: process.execPath,
+    MAF_CODEX_APP_SERVER_ARGS: JSON.stringify([
+      "run",
+      join(projectRoot(), "tests", "fixtures", "mock-codex-app-server.ts")
+    ]),
+    MAF_DISABLE_BROWSER_OPEN: "1",
+    MOCK_CODEX_APP_SERVER_SCENARIO: scenario
+  };
+}
+
 function runCli(
   args: string[],
   input = "",
@@ -20,7 +32,11 @@ function runCli(
     "OPENAI_API_KEY",
     "MAF_STATE_DIR",
     "MAF_CREDENTIAL_STORE_BACKEND",
-    "MAF_CREDENTIAL_STORE_FILE"
+    "MAF_CREDENTIAL_STORE_FILE",
+    "MAF_CODEX_APP_SERVER_COMMAND",
+    "MAF_CODEX_APP_SERVER_ARGS",
+    "MAF_DISABLE_BROWSER_OPEN",
+    "MOCK_CODEX_APP_SERVER_SCENARIO"
   ]) {
     delete env[name];
   }
@@ -180,6 +196,22 @@ describe("integration/auth-connector", () => {
     }
   });
 
+  test("connector use rejects ephemeral env connectors", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "maf-connector-use-env-"));
+
+    try {
+      const useResult = runCli(["connector", "use", "--connector", "gemini-env"], "", {
+        MAF_STATE_DIR: stateDir,
+        GEMINI_API_KEY: "gemini-key"
+      });
+
+      expect(useResult.exitCode).toBe(1);
+      expect(useResult.stderr).toContain("store this connector first");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
   test("auth certify writes an auth artifact and updates stored certification status", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "maf-auth-certify-"));
     const credentialFile = join(stateDir, "credentials.json");
@@ -243,13 +275,14 @@ describe("integration/auth-connector", () => {
     }
   });
 
-  test("openai chatgpt-oauth login writes a blocked connector placeholder with tracking", async () => {
+  test("openai chatgpt-oauth login authenticates through the Codex app-server and certifies by default", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "maf-auth-openai-oauth-"));
     const credentialFile = join(stateDir, "credentials.json");
     const env = {
       MAF_STATE_DIR: stateDir,
       MAF_CREDENTIAL_STORE_BACKEND: "file",
-      MAF_CREDENTIAL_STORE_FILE: credentialFile
+      MAF_CREDENTIAL_STORE_FILE: credentialFile,
+      ...mockCodexAppServerEnv()
     };
 
     try {
@@ -262,55 +295,64 @@ describe("integration/auth-connector", () => {
           "--method",
           "chatgpt-oauth",
           "--connector-id",
-          "openai-oauth"
+          "openai-oauth",
+          "--use"
         ],
         "",
         env
       );
 
-      expect(loginResult.exitCode).toBe(1);
-      expect(loginResult.stdout).toContain("Stored blocked connector placeholder: openai-oauth");
-      expect(loginResult.stdout).toContain("Runtime status: blocked (oauth_not_implemented)");
-      expect(loginResult.stdout).toContain("https://github.com/slittycode/multi-agent-framework/issues/1");
+      expect(loginResult.exitCode).toBe(0);
+      expect(loginResult.stdout).toContain("Stored connector: openai-oauth");
+      expect(loginResult.stdout).toContain("Auth method: chatgpt-oauth");
+      expect(loginResult.stdout).toContain("Certification: passed");
 
       const catalogRaw = await readFile(join(stateDir, "connectors.json"), "utf8");
       const catalog = JSON.parse(catalogRaw) as {
         activeConnectorId?: string;
         connectors: Array<{
           id: string;
+          providerId: string;
           authMethod: string;
+          defaultModel: string;
+          credentialSource: string;
           lastCertificationStatus: string;
+          lastCertifiedAt?: string;
           runtimeStatus: string;
-          runtimeStatusReason?: string;
-          trackedIssueUrl?: string;
         }>;
       };
 
-      expect(catalog.activeConnectorId).toBeUndefined();
+      expect(catalog.activeConnectorId).toBe("openai-oauth");
       expect(catalog.connectors).toContainEqual(
         expect.objectContaining({
           id: "openai-oauth",
+          providerId: "openai",
           authMethod: "chatgpt-oauth",
-          lastCertificationStatus: "blocked",
-          runtimeStatus: "blocked",
-          runtimeStatusReason: "oauth_not_implemented",
-          trackedIssueUrl: "https://github.com/slittycode/multi-agent-framework/issues/1"
+          defaultModel: "gpt-5.3-codex",
+          credentialSource: "codex-app-server",
+          lastCertificationStatus: "passed",
+          runtimeStatus: "ready"
         })
       );
+      expect(
+        catalog.connectors.find((connector) => connector.id === "openai-oauth")?.lastCertifiedAt
+      ).toEqual(expect.any(String));
 
       const statusResult = runCli(["auth", "status", "--connector", "openai-oauth"], "", env);
-      expect(statusResult.exitCode).toBe(1);
-      expect(statusResult.stdout).toContain("Runtime status: blocked");
-      expect(statusResult.stdout).toContain("Tracking: https://github.com/slittycode/multi-agent-framework/issues/1");
+      expect(statusResult.exitCode).toBe(0);
+      expect(statusResult.stdout).toContain("Runtime status: ready");
+      expect(statusResult.stdout).toContain("Credential source: codex-app-server");
+      expect(statusResult.stdout).toContain("Credential available: yes");
 
       const listResult = runCli(["connector", "list"], "", env);
       expect(listResult.exitCode).toBe(0);
       expect(listResult.stdout).toContain("openai-oauth");
-      expect(listResult.stdout).toContain("status=blocked(oauth_not_implemented)");
+      expect(listResult.stdout).toContain("source=codex-app-server");
+      expect(listResult.stdout).toContain("status=ready");
 
       const useResult = runCli(["connector", "use", "--connector", "openai-oauth"], "", env);
-      expect(useResult.exitCode).toBe(1);
-      expect(useResult.stderr).toContain("cannot be activated");
+      expect(useResult.exitCode).toBe(0);
+      expect(useResult.stdout).toContain("Active connector: openai-oauth");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }

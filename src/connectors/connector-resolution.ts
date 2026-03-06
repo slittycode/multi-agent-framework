@@ -46,6 +46,23 @@ function buildEnvOverlay(
   }
 }
 
+function isEnvBackedConnectorId(connectorId: string): boolean {
+  return connectorId.endsWith("-env");
+}
+
+function getEnvConnectorRemediation(connectorId: string): string {
+  switch (connectorId) {
+    case "gemini-env":
+      return "export GEMINI_API_KEY again or select/store another connector.";
+    case "kimi-env":
+      return "export KIMI_API_KEY again or select/store another connector.";
+    case "openai-env":
+      return "export OPENAI_API_KEY again or select/store another connector.";
+    default:
+      return "restore the environment-backed connector or select/store another connector.";
+  }
+}
+
 export async function listAvailableConnectors(input: {
   cwd?: string;
   env?: Record<string, string | undefined>;
@@ -95,6 +112,13 @@ async function materializeConnector(
     return {
       connector,
       envOverlay: buildEnvOverlay(connector, credentialValue)
+    };
+  }
+
+  if (connector.credentialSource === "codex-app-server") {
+    return {
+      connector,
+      envOverlay: {}
     };
   }
 
@@ -174,12 +198,24 @@ export async function resolveExecutionContext(input: {
     };
   }
 
-  const activeConnector = activeConnectorId
+  let activeConnector = activeConnectorId
     ? available.connectors.find((candidate) => candidate.id === activeConnectorId)
     : undefined;
+  const staleEnvBackedActiveConnector =
+    Boolean(activeConnectorId) && !activeConnector && isEnvBackedConnectorId(activeConnectorId as string);
 
   if (activeConnectorId && !activeConnector) {
-    throw new Error(`Active connector "${activeConnectorId}" is not available.`);
+    if (staleEnvBackedActiveConnector && input.executionMode === "auto") {
+      activeConnector = undefined;
+    } else if (isEnvBackedConnectorId(activeConnectorId)) {
+      throw new Error(
+        `Active connector "${activeConnectorId}" is not available. ${getEnvConnectorRemediation(
+          activeConnectorId
+        )}`
+      );
+    } else {
+      throw new Error(`Active connector "${activeConnectorId}" is not available.`);
+    }
   }
 
   if (activeConnector && !isConnectorBlocked(activeConnector)) {
@@ -197,6 +233,31 @@ export async function resolveExecutionContext(input: {
 
   if (activeConnector && isConnectorBlocked(activeConnector) && input.executionMode === "live") {
     throw new Error(formatBlockedConnectorMessage(activeConnector));
+  }
+
+  if (!activeConnector && staleEnvBackedActiveConnector && input.executionMode === "auto") {
+    const storedReadyConnectors = available.connectors.filter(
+      (connector) => !connector.ephemeral && !isConnectorBlocked(connector)
+    );
+
+    if (storedReadyConnectors.length === 1) {
+      const resolved = await materializeConnector(storedReadyConnectors[0] as AvailableConnector, input);
+      return {
+        requestedExecutionMode: "auto",
+        resolvedExecutionMode: "live",
+        catalog: available.catalog,
+        activeConnectorId,
+        availableConnectors: available.connectors,
+        connector: resolved.connector,
+        envOverlay: resolved.envOverlay
+      };
+    }
+
+    if (storedReadyConnectors.length > 1) {
+      throw new Error(
+        "Multiple live connectors are available. Select one explicitly with --connector or connector use."
+      );
+    }
   }
 
   if (envConnectors.length === 1) {

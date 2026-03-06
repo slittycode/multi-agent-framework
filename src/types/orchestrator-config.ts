@@ -27,7 +27,7 @@ export interface CitationConfig {
 }
 
 export interface OrchestratorConfig {
-  executionMode: "sequential" | "parallel";
+  executionMode: "sequential";
   failFast?: boolean;
   judge?: JudgeConfig;
   contextPolicy?: ContextPolicyConfig;

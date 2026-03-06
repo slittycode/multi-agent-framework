@@ -53,8 +53,8 @@ const PROVIDER_SUPPORT_BY_ID: Record<string, ProviderSupportDefinition> = {
     liveCapable: true,
     requiredEnv: ["OPENAI_API_KEY"],
     declaredAuthMethods: ["api-key", "chatgpt-oauth"],
-    supportedAuthMethods: ["api-key"],
-    credentialSources: ["env", "keychain"],
+    supportedAuthMethods: ["api-key", "chatgpt-oauth"],
+    credentialSources: ["env", "keychain", "codex-app-server"],
     defaultModel: "gpt-4.1-mini"
   },
   claude: {

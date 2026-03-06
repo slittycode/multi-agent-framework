@@ -188,6 +188,103 @@ describe("connectors", () => {
     }
   });
 
+  test("auto execution ignores stale env-backed active connector ids and falls back to mock", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "maf-connectors-stale-env-auto-"));
+
+    try {
+      await saveConnectorCatalog(
+        {
+          schemaVersion: 1,
+          activeConnectorId: "gemini-env",
+          connectors: []
+        },
+        { cwd }
+      );
+
+      const resolution = await resolveExecutionContext({
+        cwd,
+        executionMode: "auto",
+        env: {},
+        credentialStore: new MemoryCredentialStore()
+      });
+
+      expect(resolution.resolvedExecutionMode).toBe("mock");
+      expect(resolution.connector).toBeUndefined();
+      expect(resolution.activeConnectorId).toBe("gemini-env");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test("live execution rejects stale env-backed active connector ids with remediation", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "maf-connectors-stale-env-live-"));
+
+    try {
+      await saveConnectorCatalog(
+        {
+          schemaVersion: 1,
+          activeConnectorId: "gemini-env",
+          connectors: []
+        },
+        { cwd }
+      );
+
+      await expect(
+        resolveExecutionContext({
+          cwd,
+          executionMode: "live",
+          env: {},
+          credentialStore: new MemoryCredentialStore()
+        })
+      ).rejects.toThrow("export GEMINI_API_KEY again");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test("auto execution falls back from a stale env-backed active connector to the only stored ready connector", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "maf-connectors-stale-env-stored-fallback-"));
+    const credentialStore = new MemoryCredentialStore();
+    await credentialStore.set("openai-main", "stored-openai-key");
+
+    try {
+      await saveConnectorCatalog(
+        {
+          schemaVersion: 1,
+          activeConnectorId: "gemini-env",
+          connectors: [
+            {
+              id: "openai-main",
+              providerId: "openai",
+              authMethod: "api-key",
+              defaultModel: "gpt-4.1-mini",
+              credentialSource: "keychain",
+              credentialRef: "openai-main",
+              lastCertificationStatus: "never",
+              runtimeStatus: "ready"
+            }
+          ]
+        },
+        { cwd }
+      );
+
+      const resolution = await resolveExecutionContext({
+        cwd,
+        executionMode: "auto",
+        env: {},
+        credentialStore
+      });
+
+      expect(resolution.resolvedExecutionMode).toBe("live");
+      expect(resolution.connector).toMatchObject({
+        id: "openai-main",
+        providerId: "openai"
+      });
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   test("live execution fails when the stored connector credential is missing", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "maf-connectors-missing-credential-"));
 

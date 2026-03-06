@@ -67,6 +67,11 @@ export async function connectorCommand(args: string[]): Promise<number> {
         if (!connector) {
           throw new Error(`Connector "${connectorId}" is not available.`);
         }
+        if (connector.ephemeral) {
+          throw new Error(
+            `Connector "${connectorId}" is environment-backed and cannot be persisted as active state; store this connector first with auth login.`
+          );
+        }
         if (isConnectorBlocked(connector)) {
           throw new Error(
             `Connector "${connectorId}" is blocked (${connector.runtimeStatusReason}) and cannot be activated.`

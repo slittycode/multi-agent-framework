@@ -7,7 +7,7 @@
   "properties": {
     "executionMode": {
       "type": "string",
-      "enum": ["sequential", "parallel"]
+      "enum": ["sequential"]
     },
     "failFast": {
       "type": "boolean"

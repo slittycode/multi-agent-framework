@@ -126,7 +126,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "executionMode": { "type": "string", "enum": ["sequential", "parallel"] },
+        "executionMode": { "type": "string", "enum": ["sequential"] },
         "failFast": { "type": "boolean" },
         "judge": { "$ref": "#/$defs/judgeConfig" },
         "contextPolicy": { "$ref": "#/$defs/contextPolicyConfig" },
