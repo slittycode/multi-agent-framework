@@ -1,0 +1,44 @@
+{
+  "id": "fixture-json",
+  "name": "Fixture JSON Adapter",
+  "version": "1.0.0",
+  "synthesisAgentId": "synth",
+  "agents": [
+    {
+      "id": "speaker",
+      "name": "Speaker",
+      "role": "speaker",
+      "persona": "Clear and concise",
+      "systemPrompt": "Provide direct analysis.",
+      "llm": {
+        "provider": "mock",
+        "model": "mock-model-v1"
+      }
+    },
+    {
+      "id": "synth",
+      "name": "Synth",
+      "role": "synthesiser",
+      "persona": "Balanced summariser",
+      "systemPrompt": "Summarise key outcomes.",
+      "llm": {
+        "provider": "mock",
+        "model": "mock-model-v1"
+      }
+    }
+  ],
+  "rounds": [
+    {
+      "id": "round-1",
+      "name": "Round One",
+      "phases": [
+        {
+          "id": "opening",
+          "name": "Opening",
+          "instructions": "Open positions",
+          "turnOrder": ["speaker", "synth"]
+        }
+      ]
+    }
+  ]
+}

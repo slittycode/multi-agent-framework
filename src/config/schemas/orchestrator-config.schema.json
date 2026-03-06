@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://multi-agent-framework.local/schemas/orchestrator-config.schema.json",
+  "title": "Orchestrator Config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "executionMode": {
+      "type": "string",
+      "enum": ["sequential", "parallel"]
+    },
+    "failFast": {
+      "type": "boolean"
+    },
+    "judge": {
+      "type": "object",
+      "required": ["agentId"],
+      "additionalProperties": false,
+      "properties": {
+        "agentId": { "type": "string", "minLength": 1 },
+        "promptTemplate": { "type": "string" }
+      }
+    },
+    "contextPolicy": {
+      "type": "object",
+      "required": ["mode"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["full", "round_plus_recent"]
+        },
+        "recentMessageCount": {
+          "type": "number",
+          "minimum": 1
+        },
+        "includePhaseSummaries": {
+          "type": "boolean"
+        }
+      }
+    },
+    "phaseJudge": {
+      "type": "object",
+      "required": ["enabled", "cadence", "agentId"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "cadence": {
+          "type": "string",
+          "enum": ["after_each_phase"]
+        },
+        "agentId": { "type": "string", "minLength": 1 },
+        "promptTemplate": { "type": "string" }
+      }
+    },
+    "qualityGate": {
+      "type": "object",
+      "required": ["enabled", "threshold"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "threshold": { "type": "number", "minimum": 0, "maximum": 100 },
+        "recordInTranscriptMetadata": { "type": "boolean" }
+      }
+    },
+    "citations": {
+      "type": "object",
+      "required": ["mode", "failPolicy"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["transcript_only", "optional_web"]
+        },
+        "failPolicy": {
+          "type": "string",
+          "enum": ["graceful_fallback", "fail_fast"]
+        },
+        "maxWebSourcesPerTurn": {
+          "type": "number",
+          "minimum": 1
+        }
+      }
+    },
+    "retry": {
+      "type": "object",
+      "required": ["attempts", "backoffMs"],
+      "additionalProperties": false,
+      "properties": {
+        "attempts": { "type": "number", "minimum": 1 },
+        "backoffMs": { "type": "number", "minimum": 0 }
+      }
+    },
+    "synthesis": {
+      "type": "object",
+      "required": ["agentId", "trigger"],
+      "additionalProperties": false,
+      "properties": {
+        "agentId": { "type": "string", "minLength": 1 },
+        "trigger": {
+          "type": "string",
+          "enum": ["after_all_rounds"]
+        }
+      }
+    },
+    "transcript": {
+      "type": "object",
+      "required": ["persistToFile", "outputDir", "format"],
+      "additionalProperties": false,
+      "properties": {
+        "persistToFile": { "type": "boolean" },
+        "outputDir": { "type": "string", "minLength": 1 },
+        "format": {
+          "type": "string",
+          "enum": ["json", "jsonl"]
+        }
+      }
+    },
+    "cli": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "showTimestamps": { "type": "boolean" },
+        "showUsage": { "type": "boolean" },
+        "colorize": { "type": "boolean" }
+      }
+    }
+  }
+}

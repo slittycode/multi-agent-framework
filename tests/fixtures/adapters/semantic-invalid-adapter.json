@@ -1,0 +1,33 @@
+{
+  "id": "fixture-semantic-invalid",
+  "name": "Semantic Invalid Adapter",
+  "version": "1.0.0",
+  "synthesisAgentId": "missing-agent",
+  "agents": [
+    {
+      "id": "speaker",
+      "name": "Speaker",
+      "role": "speaker",
+      "persona": "clear",
+      "systemPrompt": "Speak clearly",
+      "llm": {
+        "provider": "mock",
+        "model": "mock-model-v1"
+      }
+    }
+  ],
+  "rounds": [
+    {
+      "id": "round-1",
+      "name": "Round One",
+      "phases": [
+        {
+          "id": "opening",
+          "name": "Opening",
+          "instructions": "Open",
+          "turnOrder": ["speaker"]
+        }
+      ]
+    }
+  ]
+}

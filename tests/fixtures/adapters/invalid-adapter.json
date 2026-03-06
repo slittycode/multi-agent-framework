@@ -1,0 +1,29 @@
+{
+  "id": "fixture-invalid",
+  "name": "Invalid Adapter",
+  "version": "1.0.0",
+  "synthesisAgentId": "missing-agent",
+  "agents": [
+    {
+      "id": "a1",
+      "name": "A1",
+      "role": "role",
+      "persona": "persona",
+      "systemPrompt": "prompt"
+    }
+  ],
+  "rounds": [
+    {
+      "id": "round-1",
+      "name": "Round One",
+      "phases": [
+        {
+          "id": "opening",
+          "name": "Opening",
+          "instructions": "open",
+          "turnOrder": []
+        }
+      ]
+    }
+  ]
+}
