@@ -3,6 +3,7 @@ import { applyConnectorToAdapter } from "../../connectors/adapter-override";
 import { createCredentialStore } from "../../connectors/credential-store";
 import { resolveExecutionContext, type ExecutionMode } from "../../connectors/connector-resolution";
 import {
+  getActionabilityThreshold,
   getEvaluationTierForProviderMode,
   type ActionabilityEvaluation
 } from "../../core/actionability";
@@ -344,6 +345,7 @@ export async function runCommand(args: string[]): Promise<number> {
         format: options.format ?? "json"
       }
     };
+    const adapterQualityGate = adapter.orchestrator?.qualityGate;
     if (options.phaseJudgeEnabled !== undefined) {
       runConfig.phaseJudge = {
         enabled: options.phaseJudgeEnabled,
@@ -354,7 +356,14 @@ export async function runCommand(args: string[]): Promise<number> {
     if (options.qualityThreshold !== undefined) {
       runConfig.qualityGate = {
         enabled: true,
-        threshold: options.qualityThreshold
+        threshold: options.qualityThreshold,
+        recordInTranscriptMetadata: adapterQualityGate?.recordInTranscriptMetadata
+      };
+    } else if (adapterQualityGate?.enabled) {
+      runConfig.qualityGate = {
+        ...adapterQualityGate,
+        enabled: true,
+        threshold: getActionabilityThreshold(evaluationTier)
       };
     }
     if (options.citationMode) {

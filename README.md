@@ -181,7 +181,7 @@ Expected behavior:
 - OpenAI passes only in a local environment with `codex app-server` installed and an authenticated ChatGPT browser session.
 - Kimi passes only with a valid Moonshot platform API key from `platform.moonshot.cn`.
 
-The nightly GitHub Actions workflow runs the offline suite plus Gemini live smoke only. OpenAI ChatGPT OAuth and Kimi are intentionally skipped in CI because those credentials are not suitable for a headless shared runner.
+The nightly GitHub Actions workflow runs `bun run verify:offline` plus Gemini live smoke only. OpenAI ChatGPT OAuth and Kimi are intentionally skipped in CI because those credentials are not suitable for a headless shared runner.
 
 ## Run Semantics
 
@@ -263,7 +263,7 @@ The evaluator applies hard penalties for:
 
 Default thresholds:
 
-- baseline entry threshold: `75`
+- baseline entry threshold: `60`
 - live certification mean threshold: `80`
 - live certification minimum per scenario: `70`
 

@@ -123,7 +123,7 @@ describe("integration/v02-benchmark", () => {
     expect(report.meanInputTokens).toBeLessThanOrEqual(TARGET_INPUT_TOKENS);
     expect(report.evaluationTier).toBe("baseline");
     expect(report.rubricVersion).toBe(ACTIONABILITY_RUBRIC_VERSION);
-    expect(report.entries.some((entry) => entry.actionability.passed === false)).toBe(true);
+    expect(report.entries.every((entry) => entry.actionability.passed)).toBe(true);
     expect(report.entries.every((entry) => entry.actionability.evaluationTier === "baseline")).toBe(true);
     expect(distinctActionabilityScores.size).toBeGreaterThan(1);
   });

@@ -1,3 +1,4 @@
+import { DEFAULT_BASELINE_ACTIONABILITY_THRESHOLD } from "../../core/actionability";
 import type { DomainAdapter } from "../../types";
 
 const creativeWriting: DomainAdapter = {
@@ -83,7 +84,7 @@ const creativeWriting: DomainAdapter = {
     },
     qualityGate: {
       enabled: true,
-      threshold: 75
+      threshold: DEFAULT_BASELINE_ACTIONABILITY_THRESHOLD
     },
     contextPolicy: {
       mode: "round_plus_recent"

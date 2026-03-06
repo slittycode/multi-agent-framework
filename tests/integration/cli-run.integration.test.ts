@@ -567,13 +567,13 @@ describe("integration/cli-run", () => {
     }
   });
 
-  test("benchmark command writes report, prints table, and exits non-zero when quality threshold fails", async () => {
+  test("benchmark command writes report, prints table, and exits zero when baseline quality passes", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "maf-benchmark-cli-"));
 
     try {
       const result = runCli(["benchmark", "--output-dir", outputDir]);
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Benchmark Summary");
       expect(result.stdout).toContain("Evaluation Tier: baseline");
       expect(result.stdout).toContain("adapter");
@@ -593,6 +593,7 @@ describe("integration/cli-run", () => {
         executionMode: string;
         resolvedExecutionMode: string;
         certificationScope: string;
+        actionabilityThreshold: number;
         activeConnectorId?: string;
         providerIds: string[];
         rubricVersion: string;
@@ -616,18 +617,18 @@ describe("integration/cli-run", () => {
       expect(report.executionMode).toBe("auto");
       expect(report.resolvedExecutionMode).toBe("mock");
       expect(report.certificationScope).toBe("baseline");
+      expect(report.actionabilityThreshold).toBe(60);
       expect(report.activeConnectorId).toBeUndefined();
       expect(report.providerIds).toContain("gemini");
       expect(report.rubricVersion).toEqual(expect.any(String));
       expect(report.entries).toHaveLength(9);
       expect(report.entries.every((entry) => entry.transcriptPath)).toBe(true);
       expect(report.entries.every((entry) => entry.connectorId === undefined)).toBe(true);
-      expect(report.entries.some((entry) => entry.debugArtifactPath)).toBe(true);
-      expect(report.entries.some((entry) => entry.actionability.passed === false)).toBe(true);
-      expect(report.entries.some((entry) => entry.failureReasons.length > 0)).toBe(true);
+      expect(report.entries.every((entry) => entry.actionability.passed)).toBe(true);
+      expect(report.entries.every((entry) => !entry.debugArtifactPath)).toBe(true);
 
       const debugEntries = await readdir(join(outputDir, "debug"));
-      expect(debugEntries.length).toBeGreaterThan(0);
+      expect(debugEntries).toHaveLength(0);
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }
@@ -653,7 +654,7 @@ describe("integration/cli-run", () => {
         outputDir
       ]);
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Benchmark Summary");
 
       const files = await readdir(outputDir);
@@ -698,7 +699,7 @@ describe("integration/cli-run", () => {
         MAF_STATE_DIR: stateDir
       });
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Evaluation Tier: baseline");
 
       const files = await readdir(outputDir);

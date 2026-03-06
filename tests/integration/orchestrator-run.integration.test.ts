@@ -58,7 +58,7 @@ describe("integration/orchestrator-run", () => {
           | undefined
       )?.qualityGate;
       expect(qualityGate).toBeDefined();
-      expect(qualityGate?.threshold).toBe(75);
+      expect(qualityGate?.threshold).toBe(60);
       expect(typeof qualityGate?.score).toBe("number");
       expect(typeof qualityGate?.passed).toBe("boolean");
       expect(qualityGate).toMatchObject({
@@ -316,7 +316,7 @@ describe("integration/orchestrator-run", () => {
           failFast: true,
           qualityGate: {
             enabled: true,
-            threshold: 95
+            threshold: 101
           },
           transcript: {
             persistToFile: false,

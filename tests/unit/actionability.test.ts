@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import {
   ACTIONABILITY_RUBRIC_VERSION,
+  DEFAULT_BASELINE_ACTIONABILITY_THRESHOLD,
+  getActionabilityThreshold,
   evaluateTranscriptActionability
 } from "../../src/core/actionability";
 import type { Message, Transcript } from "../../src/types";
@@ -54,6 +56,12 @@ function createTranscript(input: {
 }
 
 describe("actionability", () => {
+  test("exposes tier-specific thresholds", () => {
+    expect(DEFAULT_BASELINE_ACTIONABILITY_THRESHOLD).toBe(60);
+    expect(getActionabilityThreshold("baseline")).toBe(60);
+    expect(getActionabilityThreshold("live_certification")).toBe(70);
+  });
+
   test("passes a grounded synthesis with prioritized next steps", () => {
     const transcript = createTranscript({
       topic: "How should teams adopt async communication?",

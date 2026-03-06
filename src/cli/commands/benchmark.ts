@@ -13,9 +13,9 @@ import {
 import type { AvailableConnector } from "../../connectors/types";
 import {
   ACTIONABILITY_RUBRIC_VERSION,
-  DEFAULT_BASELINE_ACTIONABILITY_THRESHOLD,
   LIVE_CERTIFICATION_ENTRY_THRESHOLD,
   LIVE_CERTIFICATION_MEAN_THRESHOLD,
+  getActionabilityThreshold,
   getEvaluationTierForProviderMode,
   type ActionabilityEvaluation,
   type ActionabilityEvaluationTier
@@ -341,12 +341,6 @@ function createEmptyActionability(
     penalties: [],
     failureReasons: [failureReason]
   };
-}
-
-function getActionabilityThreshold(evaluationTier: ActionabilityEvaluationTier): number {
-  return evaluationTier === "baseline"
-    ? DEFAULT_BASELINE_ACTIONABILITY_THRESHOLD
-    : LIVE_CERTIFICATION_ENTRY_THRESHOLD;
 }
 
 async function fileExists(path: string): Promise<boolean> {

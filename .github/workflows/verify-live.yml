@@ -23,7 +23,7 @@ jobs:
 
       - name: Run offline suite
         id: offline
-        run: bun test
+        run: bun run verify:offline
 
       - name: Run Gemini live smoke
         id: live_gemini

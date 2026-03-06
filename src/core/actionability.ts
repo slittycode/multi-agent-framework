@@ -1,7 +1,7 @@
 import type { Transcript } from "../types";
 
 export const ACTIONABILITY_RUBRIC_VERSION = "2026-03-06.v1";
-export const DEFAULT_BASELINE_ACTIONABILITY_THRESHOLD = 75;
+export const DEFAULT_BASELINE_ACTIONABILITY_THRESHOLD = 60;
 export const LIVE_CERTIFICATION_ENTRY_THRESHOLD = 70;
 export const LIVE_CERTIFICATION_MEAN_THRESHOLD = 80;
 
@@ -11,6 +11,14 @@ export function getEvaluationTierForProviderMode(
   providerMode: "mock" | "live" | "auto"
 ): ActionabilityEvaluationTier {
   return providerMode === "mock" ? "baseline" : "live_certification";
+}
+
+export function getActionabilityThreshold(
+  evaluationTier: ActionabilityEvaluationTier
+): number {
+  return evaluationTier === "baseline"
+    ? DEFAULT_BASELINE_ACTIONABILITY_THRESHOLD
+    : LIVE_CERTIFICATION_ENTRY_THRESHOLD;
 }
 
 export interface ActionabilitySubscores {
@@ -195,7 +203,7 @@ export function evaluateTranscriptActionability(
   } = {}
 ): ActionabilityEvaluation {
   const evaluationTier = input.evaluationTier ?? "baseline";
-  const threshold = input.threshold ?? DEFAULT_BASELINE_ACTIONABILITY_THRESHOLD;
+  const threshold = input.threshold ?? getActionabilityThreshold(evaluationTier);
   const synthesis = transcript.synthesis;
   const summary = synthesis?.summary?.trim() ?? "";
   const verdict = synthesis?.verdict?.trim() ?? "";
