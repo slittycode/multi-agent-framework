@@ -152,6 +152,8 @@ export function filterVisibleTranscriptForAgent(
     }
 
     // visibilityPolicy.participants is an explicit symmetric send/receive allowlist.
+    // TODO(roadmap): extend this to asymmetric receiveFrom/publishTo rules once transcript
+    // routing can enforce per-recipient visibility without leaking unpublished turns.
     const receiverIsParticipant = participants.includes(receiverAgentId);
     if (!receiverIsParticipant) {
       return false;

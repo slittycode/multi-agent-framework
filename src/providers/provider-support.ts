@@ -9,6 +9,7 @@ export interface ProviderSupportDescriptor {
   supportedAuthMethods: string[];
   credentialSources: string[];
   defaultModel?: string;
+  providerNote?: string;
 }
 
 interface ProviderSupportDefinition {
@@ -19,6 +20,7 @@ interface ProviderSupportDefinition {
   supportedAuthMethods: string[];
   credentialSources: string[];
   defaultModel?: string;
+  providerNote?: string;
 }
 
 const PROVIDER_SUPPORT_BY_ID: Record<string, ProviderSupportDefinition> = {
@@ -46,7 +48,9 @@ const PROVIDER_SUPPORT_BY_ID: Record<string, ProviderSupportDefinition> = {
     declaredAuthMethods: ["api-key"],
     supportedAuthMethods: ["api-key"],
     credentialSources: ["env", "keychain"],
-    defaultModel: "moonshot-v1-8k"
+    defaultModel: "moonshot-v1-8k",
+    providerNote:
+      "Implemented but uncertified: requires a valid Moonshot platform API key from platform.moonshot.cn (separate from Kimi CLI credentials)."
   },
   openai: {
     recognized: true,
@@ -58,12 +62,16 @@ const PROVIDER_SUPPORT_BY_ID: Record<string, ProviderSupportDefinition> = {
     defaultModel: "gpt-4.1-mini"
   },
   claude: {
+    // Intentionally unsupported: many users only have claude.ai subscription access,
+    // while live framework execution would require a separate Anthropic API key and billing path.
     recognized: true,
     liveCapable: false,
     requiredEnv: ["ANTHROPIC_API_KEY"],
     declaredAuthMethods: ["api-key"],
     supportedAuthMethods: ["api-key"],
-    credentialSources: ["env", "keychain"]
+    credentialSources: ["env", "keychain"],
+    providerNote:
+      "Intentionally unsupported for live execution: claude.ai subscription access does not include Anthropic API billing, and requiring a separate API key would create a second billing path."
   }
 };
 
@@ -90,7 +98,8 @@ export function describeProviderSupport(providerId: ProviderId): ProviderSupport
     declaredAuthMethods: [...definition.declaredAuthMethods],
     supportedAuthMethods: [...definition.supportedAuthMethods],
     credentialSources: [...definition.credentialSources],
-    ...(definition.defaultModel ? { defaultModel: definition.defaultModel } : {})
+    ...(definition.defaultModel ? { defaultModel: definition.defaultModel } : {}),
+    ...(definition.providerNote ? { providerNote: definition.providerNote } : {})
   };
 }
 

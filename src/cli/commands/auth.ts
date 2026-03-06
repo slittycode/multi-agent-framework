@@ -190,7 +190,8 @@ async function handleAuthLogin(options: AuthLoginOptions): Promise<number> {
         credentialSource: "codex-app-server",
         credentialRef: "openai-chatgpt",
         lastCertificationStatus: "never",
-        runtimeStatus: "ready"
+        runtimeStatus: "ready",
+        ...(support.providerNote ? { providerNote: support.providerNote } : {})
       };
 
       let updatedCatalog = upsertConnector(catalog, connector);
@@ -271,6 +272,7 @@ async function handleAuthLogin(options: AuthLoginOptions): Promise<number> {
     credentialRef: connectorId,
     lastCertificationStatus: "never",
     runtimeStatus: "ready",
+    ...(support.providerNote ? { providerNote: support.providerNote } : {}),
     ...(options.provider === "kimi" && options.baseURL?.trim() ? { baseURL: options.baseURL.trim() } : {})
   };
 
@@ -346,6 +348,9 @@ async function handleAuthStatus(connectorId?: string): Promise<number> {
   }
   if (connector.trackedIssueUrl) {
     console.log(`Tracking: ${connector.trackedIssueUrl}`);
+  }
+  if (connector.providerNote) {
+    console.log(`Provider note: ${connector.providerNote}`);
   }
   console.log(`Default model: ${connector.defaultModel}`);
 

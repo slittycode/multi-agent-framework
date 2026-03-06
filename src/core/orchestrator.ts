@@ -258,6 +258,8 @@ export async function runDiscussion(input: RunDiscussionInput): Promise<RunDiscu
     (config.citations?.mode === "optional_web" ? new NoopRetriever() : undefined);
 
   if (config.executionMode !== "sequential") {
+    // TODO(roadmap): lift this guard when round-level parallel execution is implemented with
+    // deterministic merge ordering and explicit cross-round dependency handling.
     throw new OrchestratorConfigError(
       `Execution mode "${config.executionMode}" is not implemented in MVP.`,
       "UNSUPPORTED_EXECUTION_MODE"

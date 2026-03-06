@@ -39,6 +39,9 @@ export async function connectorCommand(args: string[]): Promise<number> {
           console.log(
             `- ${connector.id}${active}: provider=${connector.providerId}, auth=${connector.authMethod}, source=${connector.credentialSource}${ephemeral}, model=${connector.defaultModel}${status}${tracking}`
           );
+          if (connector.providerNote) {
+            console.log(`  provider-note: ${connector.providerNote}`);
+          }
         }
         return 0;
       }

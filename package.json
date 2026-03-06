@@ -8,7 +8,7 @@
     "build": "bun build src/cli/main.ts --outdir dist --target bun",
     "start": "bun run src/cli/main.ts",
     "verify:offline": "bun run typecheck && bun test && bun run build",
-    "verify:live": "RUN_LIVE_PROVIDER_TESTS=1 bun test tests/integration/provider-gemini-live.integration.test.ts tests/integration/provider-kimi-live.integration.test.ts tests/integration/provider-openai-live.integration.test.ts && RUN_BENCHMARK_TESTS=1 bun test tests/integration/v02-benchmark.integration.test.ts"
+    "verify:live": "bun run scripts/verify-live.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

@@ -212,6 +212,24 @@ describe("integration/auth-connector", () => {
     }
   });
 
+  test("connector list surfaces the kimi provider note for env-backed connectors", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "maf-kimi-provider-note-"));
+
+    try {
+      const listResult = runCli(["connector", "list"], "", {
+        MAF_STATE_DIR: stateDir,
+        KIMI_API_KEY: "moonshot-key"
+      });
+
+      expect(listResult.exitCode).toBe(0);
+      expect(listResult.stdout).toContain("kimi-env");
+      expect(listResult.stdout).toContain("platform.moonshot.cn");
+      expect(listResult.stdout).toContain("Kimi CLI credentials");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
   test("auth certify writes an auth artifact and updates stored certification status", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "maf-auth-certify-"));
     const credentialFile = join(stateDir, "credentials.json");

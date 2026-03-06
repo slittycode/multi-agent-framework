@@ -41,7 +41,7 @@ Development gates:
 
 ```bash
 bun run verify:offline
-bun run verify:live
+RUN_LIVE_PROVIDER_TESTS=1 bun run verify:live
 ```
 
 ## Connector Model
@@ -76,9 +76,9 @@ If multiple live env connectors are present and none is selected, the CLI fails 
 | Provider | Recognized | Live-capable | Supported auth | Credential sources | Default model | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | `gemini` | Yes | Yes | `api-key` | `env`, `keychain` | `gemini-2.5-flash` | Uses `GEMINI_API_KEY` |
-| `kimi` | Yes | Yes | `api-key` | `env`, `keychain` | `moonshot-v1-8k` | Uses `KIMI_API_KEY`; optional `KIMI_BASE_URL` |
+| `kimi` | Yes | Yes | `api-key` | `env`, `keychain` | `moonshot-v1-8k` | Implemented but uncertified: requires a valid Moonshot platform API key from `platform.moonshot.cn` (separate from Kimi CLI credentials) |
 | `openai` | Yes | Yes | `api-key`, `chatgpt-oauth` | `env`, `keychain`, `codex-app-server` | `gpt-4.1-mini` / app-server default | Uses `OPENAI_API_KEY` via the OpenAI Responses API or the local `codex app-server` ChatGPT browser flow |
-| `claude` | Yes | No | none in this pass | none in this pass | n/a | Recognized but unsupported for live execution |
+| `claude` | Yes | No | none in this pass | none in this pass | n/a | Intentionally unsupported for live execution |
 | `mock` | Yes | Mock only | n/a | n/a | n/a | Baseline regression coverage only |
 
 OpenAI supports two live paths in this version:
@@ -86,12 +86,15 @@ OpenAI supports two live paths in this version:
 - `api-key`: `OPENAI_API_KEY` or a stored keychain-backed connector using the OpenAI Responses API
 - `chatgpt-oauth`: a stored connector backed by the local `codex app-server` ChatGPT browser flow
 
+> [!IMPORTANT]
+> OpenAI `chatgpt-oauth` requires a local `codex app-server` installation plus a browser-capable ChatGPT login flow. It is suitable for interactive local use, not headless CI environments.
+
 ## Environment
 
 Copy values from `.env.example` into your shell or local env file before live runs:
 
 - `GEMINI_API_KEY`
-- `KIMI_API_KEY`
+- `KIMI_API_KEY` from `platform.moonshot.cn`, not a Kimi CLI/session token
 - `KIMI_BASE_URL`
 - `OPENAI_API_KEY` when using OpenAI API-key connectors
 - `RUN_LIVE_PROVIDER_TESTS`
@@ -106,6 +109,8 @@ Optional local/test overrides:
 - `MAF_CREDENTIAL_STORE_FILE`
 
 Use the optional `MAF_*` overrides for tests or headless automation. Normal interactive use should rely on the repo-local connector catalog plus the OS credential store.
+
+Kimi connectors remain implemented, but this repo currently treats them as uncertified until they are exercised with a valid Moonshot platform API key. Connector metadata surfaces this note in `auth status` and `connector list` so Kimi CLI credentials are not mistaken for the required API integration credential.
 
 ## Auth Workflow
 
@@ -155,6 +160,28 @@ bun run start -- connector use --connector kimi-main
 ```
 
 Environment-backed connectors remain ephemeral. You can run against `gemini-env`, `kimi-env`, or `openai-env` explicitly, but `connector use` only persists stored connectors created with `auth login`.
+
+## Live Verification
+
+Run the env-gated live smoke tests with:
+
+```bash
+RUN_LIVE_PROVIDER_TESTS=1 bun run verify:live
+```
+
+The script runs Gemini, OpenAI ChatGPT OAuth, and Kimi smoke tests individually and prints a pass/fail/skipped result for each provider. You can also limit the run to a subset:
+
+```bash
+RUN_LIVE_PROVIDER_TESTS=1 bun run verify:live -- gemini
+```
+
+Expected behavior:
+
+- Gemini passes only when `GEMINI_API_KEY` is set and valid.
+- OpenAI passes only in a local environment with `codex app-server` installed and an authenticated ChatGPT browser session.
+- Kimi passes only with a valid Moonshot platform API key from `platform.moonshot.cn`.
+
+The nightly GitHub Actions workflow runs the offline suite plus Gemini live smoke only. OpenAI ChatGPT OAuth and Kimi are intentionally skipped in CI because those credentials are not suitable for a headless shared runner.
 
 ## Run Semantics
 
@@ -294,11 +321,21 @@ Cross-connector certification:
 bun run start -- benchmark --execution-mode live --all-connectors --output-dir ./benchmarks/all-connectors
 ```
 
-## Current Limitations
+## Limitations
 
 - OpenAI ChatGPT OAuth depends on a working local `codex app-server` installation and an interactive browser-capable login environment.
-- `claude` remains a recognized provider id but is intentionally unsupported for live execution.
+- `claude` remains a recognized provider id but is intentionally unsupported for live execution because many users only have `claude.ai` subscription access, while API-key execution would require a separate Anthropic billing relationship.
+- Kimi is implemented but still marked uncertified until it is exercised with a valid Moonshot platform API key from `platform.moonshot.cn`.
 - Top-level orchestrator execution remains `sequential` only. Use phase-level `fanout` for the supported concurrency model.
 - `visibilityPolicy.participants` is a symmetric allowlist for both send and receive visibility in this pass.
 - Live certification still depends on external provider health, quotas, and credentials.
-- The framework can improve confidence across a broad topic matrix, but it cannot honestly guarantee correctness for every possible topic. The practical claim is bounded to the built-in matrix, smoke tests, and explicit failure diagnostics.
+
+### Confidence Boundary
+
+The framework is validated against:
+
+- the built-in adapter/topic matrix
+- deterministic mock regression runs
+- provider-specific live smoke tests when credentials are available
+
+That is enough to measure regression health and connector behavior, but it is not evidence of soundness across arbitrary topics, domains, or specialized workflows. The honest claim boundary is: this system is tested on the shipped matrix and smoke prompts, with explicit failure diagnostics when a run degrades, not universally proven for every topic a user might choose.

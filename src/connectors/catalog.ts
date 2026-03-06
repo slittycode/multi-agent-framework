@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
+import { describeProviderSupport } from "../providers/provider-support";
 import type { ConnectorCatalog, ConnectorRecord } from "./types";
 
 const SCHEMA_VERSION = 1 as const;
@@ -31,6 +32,10 @@ function normalizeConnectorRecord(value: unknown): ConnectorRecord {
   const lastCertificationStatus = value.lastCertificationStatus;
   const runtimeStatus = value.runtimeStatus;
   const runtimeStatusReason = value.runtimeStatusReason;
+  const providerNote =
+    typeof value.providerNote === "string"
+      ? value.providerNote
+      : describeProviderSupport(providerId as ConnectorRecord["providerId"]).providerNote;
 
   if (
     typeof id !== "string" ||
@@ -68,7 +73,8 @@ function normalizeConnectorRecord(value: unknown): ConnectorRecord {
     ...(typeof value.lastCertifiedAt === "string" ? { lastCertifiedAt: value.lastCertifiedAt } : {}),
     ...(typeof runtimeStatusReason === "string" ? { runtimeStatusReason } : {}),
     ...(typeof value.trackedIssueUrl === "string" ? { trackedIssueUrl: value.trackedIssueUrl } : {}),
-    ...(typeof value.baseURL === "string" ? { baseURL: value.baseURL } : {})
+    ...(typeof value.baseURL === "string" ? { baseURL: value.baseURL } : {}),
+    ...(typeof providerNote === "string" ? { providerNote } : {})
   };
 }
 

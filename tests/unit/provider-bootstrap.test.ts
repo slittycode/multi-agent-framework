@@ -112,6 +112,9 @@ describe("provider-bootstrap", () => {
       declaredAuthMethods: [],
       requiredEnv: []
     });
+
+    expect(describeProviderSupport("kimi").providerNote).toContain("platform.moonshot.cn");
+    expect(describeProviderSupport("claude").providerNote).toContain("Anthropic API billing");
   });
 
   test("getAdapterProviderCapabilities deduplicates adapter providers", () => {

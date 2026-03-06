@@ -1,4 +1,8 @@
-import { getDefaultModelForProvider, listLiveCapableProviderIds } from "../providers/provider-support";
+import {
+  describeProviderSupport,
+  getDefaultModelForProvider,
+  listLiveCapableProviderIds
+} from "../providers/provider-support";
 import type { AvailableConnector } from "./types";
 
 export function discoverEnvConnectors(
@@ -7,6 +11,7 @@ export function discoverEnvConnectors(
   const connectors: AvailableConnector[] = [];
 
   for (const providerId of listLiveCapableProviderIds()) {
+    const support = describeProviderSupport(providerId);
     const defaultModel = getDefaultModelForProvider(providerId);
     if (!defaultModel) {
       continue;
@@ -27,6 +32,7 @@ export function discoverEnvConnectors(
           credentialRef: "GEMINI_API_KEY",
           lastCertificationStatus: "never",
           runtimeStatus: "ready",
+          ...(support.providerNote ? { providerNote: support.providerNote } : {}),
           ephemeral: true
         });
         break;
@@ -45,6 +51,7 @@ export function discoverEnvConnectors(
           credentialRef: "KIMI_API_KEY",
           lastCertificationStatus: "never",
           runtimeStatus: "ready",
+          ...(support.providerNote ? { providerNote: support.providerNote } : {}),
           ...(env.KIMI_BASE_URL?.trim() ? { baseURL: env.KIMI_BASE_URL.trim() } : {}),
           ephemeral: true
         });
@@ -64,6 +71,7 @@ export function discoverEnvConnectors(
           credentialRef: "OPENAI_API_KEY",
           lastCertificationStatus: "never",
           runtimeStatus: "ready",
+          ...(support.providerNote ? { providerNote: support.providerNote } : {}),
           ephemeral: true
         });
         break;

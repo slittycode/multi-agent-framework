@@ -55,10 +55,15 @@ describe("connectors", () => {
   test("discovers ephemeral env connectors with provider defaults", () => {
     const connectors = discoverEnvConnectors({
       GEMINI_API_KEY: "gemini-key",
-      OPENAI_API_KEY: "openai-key"
+      OPENAI_API_KEY: "openai-key",
+      KIMI_API_KEY: "moonshot-key"
     });
 
-    expect(connectors.map((connector) => connector.id).sort()).toEqual(["gemini-env", "openai-env"]);
+    expect(connectors.map((connector) => connector.id).sort()).toEqual([
+      "gemini-env",
+      "kimi-env",
+      "openai-env"
+    ]);
     expect(connectors.find((connector) => connector.id === "gemini-env")).toMatchObject({
       providerId: "gemini",
       credentialSource: "env",
@@ -66,6 +71,16 @@ describe("connectors", () => {
       defaultModel: "gemini-2.5-flash",
       runtimeStatus: "ready"
     });
+    expect(connectors.find((connector) => connector.id === "kimi-env")).toMatchObject({
+      providerId: "kimi",
+      credentialSource: "env",
+      credentialRef: "KIMI_API_KEY",
+      defaultModel: "moonshot-v1-8k",
+      runtimeStatus: "ready"
+    });
+    expect(connectors.find((connector) => connector.id === "kimi-env")?.providerNote).toContain(
+      "platform.moonshot.cn"
+    );
     expect(connectors.find((connector) => connector.id === "openai-env")).toMatchObject({
       providerId: "openai",
       credentialSource: "env",
@@ -73,6 +88,37 @@ describe("connectors", () => {
       defaultModel: "gpt-4.1-mini",
       runtimeStatus: "ready"
     });
+  });
+
+  test("loadConnectorCatalog backfills provider notes for kimi connectors", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "maf-connectors-kimi-note-"));
+
+    try {
+      await saveConnectorCatalog(
+        {
+          schemaVersion: 1,
+          connectors: [
+            {
+              id: "kimi-main",
+              providerId: "kimi",
+              authMethod: "api-key",
+              defaultModel: "moonshot-v1-8k",
+              credentialSource: "keychain",
+              credentialRef: "kimi-main",
+              lastCertificationStatus: "never",
+              runtimeStatus: "ready"
+            }
+          ]
+        },
+        { cwd }
+      );
+
+      const reloaded = await loadConnectorCatalog({ cwd });
+
+      expect(reloaded.connectors[0]?.providerNote).toContain("platform.moonshot.cn");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
   });
 
   test("auto execution falls back to mock when no live connector is available", async () => {

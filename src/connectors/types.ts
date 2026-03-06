@@ -22,6 +22,7 @@ export interface ConnectorRecord {
   runtimeStatusReason?: ConnectorRuntimeStatusReason;
   trackedIssueUrl?: string;
   baseURL?: string;
+  providerNote?: string;
 }
 
 export interface ConnectorCatalog {

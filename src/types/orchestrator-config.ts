@@ -27,6 +27,8 @@ export interface CitationConfig {
 }
 
 export interface OrchestratorConfig {
+  // TODO(roadmap): add round-level parallel orchestration once we can preserve
+  // deterministic transcript ordering, judge semantics, and fail-fast behavior across rounds.
   executionMode: "sequential";
   failFast?: boolean;
   judge?: JudgeConfig;

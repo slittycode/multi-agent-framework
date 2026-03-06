@@ -1,0 +1,64 @@
+name: Verify Live
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  verification:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run offline suite
+        id: offline
+        run: bun test
+
+      - name: Run Gemini live smoke
+        id: live_gemini
+        continue-on-error: true
+        env:
+          RUN_LIVE_PROVIDER_TESTS: "1"
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "${GEMINI_API_KEY}" ]; then
+            echo "result=skipped" >> "$GITHUB_OUTPUT"
+            echo "Gemini live smoke skipped: GEMINI_API_KEY secret is not configured."
+            exit 0
+          fi
+
+          bun run verify:live -- gemini
+          echo "result=passed" >> "$GITHUB_OUTPUT"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          live_result="${{ steps.live_gemini.outputs.result }}"
+          if [ -z "${live_result}" ]; then
+            if [ "${{ steps.live_gemini.outcome }}" = "failure" ]; then
+              live_result="failed"
+            elif [ "${{ steps.live_gemini.outcome }}" = "success" ]; then
+              live_result="passed"
+            else
+              live_result="skipped"
+            fi
+          fi
+
+          {
+            echo "## Verification Summary"
+            echo "- Offline suite: ${{ steps.offline.outcome }}"
+            echo "- Gemini live smoke: ${live_result}"
+            echo "- OpenAI ChatGPT OAuth live smoke: skipped in CI (requires local codex app-server and browser-capable login)"
+            echo "- Kimi live smoke: skipped in CI (requires a Moonshot platform API key that is not configured for CI)"
+          } >> "$GITHUB_STEP_SUMMARY"
