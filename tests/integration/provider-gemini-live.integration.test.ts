@@ -23,7 +23,7 @@ describe("integration/provider-gemini-live", () => {
       systemPrompt: "Be concise and factual.",
       llm: {
         provider: "gemini",
-        model: "gemini-2.0-flash",
+        model: "gemini-2.5-flash",
         temperature: 0.2
       }
     };
