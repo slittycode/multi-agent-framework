@@ -1,6 +1,14 @@
 import { loadDomainAdapter } from "../../adapters/adapter-loader";
+import {
+  getEvaluationTierForProviderMode,
+  type ActionabilityEvaluation
+} from "../../core/actionability";
 import { runDiscussion } from "../../core/orchestrator";
-import { createProviderRegistryForRun, type ProviderMode } from "../../providers/provider-bootstrap";
+import {
+  createProviderRegistryForRun,
+  getAdapterProviderCapabilities,
+  type ProviderMode
+} from "../../providers/provider-bootstrap";
 import type { DomainAdapter } from "../../types";
 import { TerminalRenderer } from "../output/terminal-renderer";
 
@@ -245,6 +253,17 @@ function validateRunOptions(options: RunCliOptions): void {
   }
 }
 
+function getTranscriptActionability(
+  metadata: Record<string, unknown> | undefined
+): ActionabilityEvaluation | undefined {
+  const qualityGate = metadata?.qualityGate;
+  if (typeof qualityGate !== "object" || qualityGate === null) {
+    return undefined;
+  }
+
+  return qualityGate as ActionabilityEvaluation;
+}
+
 export async function runCommand(args: string[]): Promise<number> {
   let options: RunCliOptions;
 
@@ -266,6 +285,18 @@ export async function runCommand(args: string[]): Promise<number> {
     const adapterSource = options.adapterId ?? options.adapterFile;
     const loadedAdapter = await loadDomainAdapter(adapterSource as string, { cwd: process.cwd() });
     const adapter = applyModelOverride(loadedAdapter, options.model);
+    const providerSupport = getAdapterProviderCapabilities(adapter);
+    const evaluationTier = getEvaluationTierForProviderMode(options.providerMode);
+    const runId = options.runId ?? crypto.randomUUID();
+
+    renderer.renderHeader({
+      runId,
+      adapterName: adapter.name,
+      topic: options.topic as string,
+      providerMode: options.providerMode,
+      evaluationTier,
+      providerSupport
+    });
 
     const registry = createProviderRegistryForRun({
       adapter,
@@ -273,7 +304,6 @@ export async function runCommand(args: string[]): Promise<number> {
       env: process.env as Record<string, string | undefined>
     });
 
-    const runId = options.runId ?? crypto.randomUUID();
     const runConfig: NonNullable<Parameters<typeof runDiscussion>[0]["config"]> = {
       transcript: {
         persistToFile: !options.noPersist,
@@ -309,25 +339,29 @@ export async function runCommand(args: string[]): Promise<number> {
       };
     }
 
-    renderer.renderHeader({
-      runId,
-      adapterName: adapter.name,
-      topic: options.topic as string
-    });
-
     const result = await runDiscussion({
       adapter,
       topic: options.topic as string,
       providerRegistry: registry,
       runId,
       config: runConfig,
+      evaluationTier,
+      metadata: {
+        evaluationTier,
+        providerMode: options.providerMode,
+        providerSupport
+      },
       onMessage: (message) => {
         renderer.renderMessage(message);
       }
     });
 
     renderer.renderSynthesis(result.context.transcript.synthesis);
-    renderer.renderSummary(result.context, result.persistedPath);
+    renderer.renderSummary(
+      result.context,
+      result.persistedPath,
+      getTranscriptActionability(result.context.transcript.metadata)
+    );
     return 0;
   } catch (error) {
     renderer.renderError(error);

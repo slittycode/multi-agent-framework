@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import {
   createProviderRegistryForRun,
+  describeProviderSupport,
+  getAdapterProviderCapabilities,
   type ProviderMode
 } from "../../src/providers/provider-bootstrap";
 import {
@@ -77,6 +79,42 @@ describe("provider-bootstrap", () => {
     expect(registry.list().sort()).toEqual(["gemini", "kimi"]);
     expect(registry.get("gemini").id).toBe("gemini");
     expect(registry.get("kimi").id).toBe("kimi");
+  });
+
+  test("describeProviderSupport reports recognized but unsupported live providers", () => {
+    expect(describeProviderSupport("gemini")).toMatchObject({
+      providerId: "gemini",
+      recognized: true,
+      liveCapable: true,
+      requiredEnv: ["GEMINI_API_KEY"]
+    });
+
+    expect(describeProviderSupport("openai")).toMatchObject({
+      providerId: "openai",
+      recognized: true,
+      liveCapable: false,
+      requiredEnv: ["OPENAI_API_KEY"]
+    });
+
+    expect(describeProviderSupport("unknown-provider")).toMatchObject({
+      providerId: "unknown-provider",
+      recognized: false,
+      liveCapable: false,
+      requiredEnv: []
+    });
+  });
+
+  test("getAdapterProviderCapabilities deduplicates adapter providers", () => {
+    const capabilities = getAdapterProviderCapabilities(createAdapter(["gemini", "openai", "gemini"]));
+
+    expect(capabilities).toHaveLength(2);
+    expect(capabilities.map((capability) => capability.providerId).sort()).toEqual([
+      "gemini",
+      "openai"
+    ]);
+    expect(capabilities.find((capability) => capability.providerId === "openai")).toMatchObject({
+      liveCapable: false
+    });
   });
 
   test("live mode fails with missing credentials for known provider", () => {

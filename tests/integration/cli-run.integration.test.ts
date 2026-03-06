@@ -53,8 +53,11 @@ describe("integration/cli-run", () => {
       ]);
 
       expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Provider Mode: mock");
+      expect(result.stdout).toContain("Evaluation Tier: baseline");
       expect(result.stdout).toContain("=== Synthesis ===");
       expect(result.stdout).toContain("Summary:");
+      expect(result.stdout).toContain("Actionability Score:");
       expect(result.stdout).toContain("Run Summary");
       expect(result.stdout).toContain("cli-run-1.transcript.json");
     } finally {
@@ -304,6 +307,8 @@ describe("integration/cli-run", () => {
     );
 
     expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("Provider Support:");
+    expect(result.stdout).toContain("openai");
     expect(result.stderr).toContain("PROVIDER_NOT_IMPLEMENTED");
   });
 
@@ -379,9 +384,10 @@ describe("integration/cli-run", () => {
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toContain("Benchmark Summary");
+      expect(result.stdout).toContain("Evaluation Tier: baseline");
       expect(result.stdout).toContain("adapter");
       expect(result.stdout).toContain("topic");
-      expect(result.stdout).toContain("qualityScore");
+      expect(result.stdout).toContain("actionability");
       expect(result.stdout).toContain("general-debate");
 
       const files = await readdir(outputDir);
@@ -391,11 +397,34 @@ describe("integration/cli-run", () => {
       const reportPath = join(outputDir, reportName as string);
       const reportRaw = await readFile(reportPath, "utf8");
       const report = JSON.parse(reportRaw) as {
-        entries: Array<{ adapterId: string; topic: string; qualityScore: number; qualityPassed: boolean }>;
+        evaluationTier: string;
+        providerMode: string;
+        providerIds: string[];
+        rubricVersion: string;
+        entries: Array<{
+          adapterId: string;
+          topic: string;
+          actionability: {
+            score: number;
+            passed: boolean;
+            subscores: Record<string, number>;
+          };
+          failureReasons: string[];
+          transcriptPath?: string;
+        }>;
       };
 
+      expect(report.evaluationTier).toBe("baseline");
+      expect(report.providerMode).toBe("mock");
+      expect(report.providerIds).toContain("gemini");
+      expect(report.rubricVersion).toEqual(expect.any(String));
       expect(report.entries).toHaveLength(9);
-      expect(report.entries.some((entry) => entry.qualityPassed === false)).toBe(true);
+      expect(report.entries.every((entry) => entry.transcriptPath)).toBe(true);
+      expect(report.entries.some((entry) => entry.actionability.passed === false)).toBe(true);
+      expect(report.entries.some((entry) => entry.failureReasons.length > 0)).toBe(true);
+
+      const debugEntries = await readdir(join(outputDir, "debug"));
+      expect(debugEntries.length).toBeGreaterThan(0);
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }

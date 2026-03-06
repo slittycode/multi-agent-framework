@@ -1,4 +1,6 @@
 import type { Message, RunContext, SynthesisOutput } from "../../types";
+import type { ActionabilityEvaluation } from "../../core/actionability";
+import type { ProviderMode, ProviderSupportDescriptor } from "../../providers/provider-bootstrap";
 
 export interface MessageFormatOptions {
   showTimestamps?: boolean;
@@ -19,12 +21,38 @@ export function formatRunHeader(input: {
   runId: string;
   adapterName: string;
   topic: string;
+  providerMode: ProviderMode;
+  evaluationTier: string;
+  providerSupport: ProviderSupportDescriptor[];
 }): string {
+  const providerLines =
+    input.providerSupport.length === 0
+      ? ["Provider Support:", "- none declared"]
+      : [
+          "Provider Support:",
+          ...input.providerSupport.map((support) => {
+            const liveStatus = support.liveCapable
+              ? "live-capable"
+              : support.recognized
+                ? "recognized, live unsupported"
+                : "unrecognized";
+            const envSuffix =
+              support.requiredEnv.length > 0
+                ? ` (env: ${support.requiredEnv.join(", ")})`
+                : "";
+
+            return `- ${support.providerId}: ${liveStatus}${envSuffix}`;
+          })
+        ];
+
   return [
     "=== Multi-Agent Discussion Run ===",
     `Run ID: ${input.runId}`,
     `Adapter: ${input.adapterName}`,
     `Topic: ${input.topic}`,
+    `Provider Mode: ${input.providerMode}`,
+    `Evaluation Tier: ${input.evaluationTier}`,
+    ...providerLines,
     "----------------------------------"
   ].join("\n");
 }
@@ -32,10 +60,21 @@ export function formatRunHeader(input: {
 export function formatRunSummary(input: {
   context: RunContext;
   persistedPath?: string;
+  actionability?: ActionabilityEvaluation;
 }): string {
   const persistedLine = input.persistedPath
     ? `Transcript: ${input.persistedPath}`
     : "Transcript persistence: disabled";
+  const actionabilityLine = input.actionability
+    ? `Actionability Score: ${input.actionability.score.toFixed(2)}/${input.actionability.threshold} (${input.actionability.passed ? "passed" : "failed"})`
+    : "Actionability Score: unavailable";
+  const breakdownLine = input.actionability
+    ? `Actionability Breakdown: structural=${input.actionability.subscores.structuralCompleteness.toFixed(2)}, specificity=${input.actionability.subscores.recommendationSpecificity.toFixed(2)}, grounding=${input.actionability.subscores.grounding.toFixed(2)}, nonRedundancy=${input.actionability.subscores.nonRedundancy.toFixed(2)}, nextSteps=${input.actionability.subscores.prioritizedNextStepUsefulness.toFixed(2)}, penalties=${input.actionability.penalties.reduce((total, penalty) => total + penalty.points, 0)}`
+    : undefined;
+  const failureReasonLine =
+    input.actionability && input.actionability.failureReasons.length > 0
+      ? `Failure Reasons: ${input.actionability.failureReasons.join(" | ")}`
+      : undefined;
 
   return [
     "----------------------------------",
@@ -43,6 +82,9 @@ export function formatRunSummary(input: {
     `Status: ${input.context.transcript.status}`,
     `Messages: ${input.context.transcript.messages.length}`,
     `Rounds processed: ${input.context.currentRoundIndex + 1}`,
+    actionabilityLine,
+    ...(breakdownLine ? [breakdownLine] : []),
+    ...(failureReasonLine ? [failureReasonLine] : []),
     persistedLine
   ].join("\n");
 }
