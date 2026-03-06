@@ -12,6 +12,11 @@ import type {
   RunId,
   Transcript
 } from "../types";
+import type { ActionabilityEvaluationTier } from "./actionability";
+import {
+  DEFAULT_BASELINE_ACTIONABILITY_THRESHOLD,
+  evaluateTranscriptActionability
+} from "./actionability";
 import { normalizeOrchestratorError, OrchestratorConfigError } from "./errors";
 import { runJudgeCheck } from "./judge-runner";
 import { runRound } from "./round-runner";
@@ -26,6 +31,7 @@ export interface RunDiscussionInput {
   config?: Partial<OrchestratorConfig>;
   runId?: RunId;
   metadata?: Record<string, unknown>;
+  evaluationTier?: ActionabilityEvaluationTier;
   onMessage?: (message: Message) => void;
 }
 
@@ -47,11 +53,11 @@ const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
     cadence: "after_each_phase",
     agentId: ""
   },
-  qualityGate: {
-    enabled: false,
-    threshold: 75,
-    recordInTranscriptMetadata: true
-  },
+    qualityGate: {
+      enabled: false,
+      threshold: DEFAULT_BASELINE_ACTIONABILITY_THRESHOLD,
+      recordInTranscriptMetadata: true
+    },
   citations: {
     mode: "transcript_only",
     failPolicy: "graceful_fallback",
@@ -158,7 +164,7 @@ function mergeOrchestratorConfig(
         override?.qualityGate?.threshold ??
         adapterOverride?.qualityGate?.threshold ??
         DEFAULT_ORCHESTRATOR_CONFIG.qualityGate?.threshold ??
-        75,
+        DEFAULT_BASELINE_ACTIONABILITY_THRESHOLD,
       recordInTranscriptMetadata:
         override?.qualityGate?.recordInTranscriptMetadata ??
         adapterOverride?.qualityGate?.recordInTranscriptMetadata ??
@@ -218,13 +224,7 @@ function mergeOrchestratorConfig(
 
 function appendQualityGateRecord(
   transcript: Transcript,
-  result: {
-    threshold: number;
-    score: number;
-    passed: boolean;
-    phaseScores: number[];
-    synthesisScore?: number;
-  }
+  result: ReturnType<typeof evaluateTranscriptActionability>
 ): Transcript {
   return {
     ...transcript,
@@ -235,138 +235,24 @@ function appendQualityGateRecord(
   };
 }
 
-function tokenizeWords(value: string): string[] {
-  return value
-    .toLowerCase()
-    .match(/[a-z0-9]+/giu)
-    ?.filter((token) => token.length > 0) ?? [];
-}
-
-function countSentences(value: string): number {
-  const sentences = value
-    .split(/[.!?]+/u)
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length > 0);
-  return sentences.length;
-}
-
-function clampScore(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function countCitationMarkers(value: string): number {
-  return [...value.matchAll(/\[(?:T|W)\d+\]/giu)].length;
-}
-
-function computeSynthesisQualityScore(transcript: Transcript): number | undefined {
-  const synthesis = transcript.synthesis;
-  if (!synthesis) {
-    return undefined;
-  }
-
-  const summary = synthesis.summary.trim();
-  if (!summary) {
-    return 0;
-  }
-
-  const summaryWords = tokenizeWords(summary);
-  const summaryWordCount = summaryWords.length;
-  const summarySentenceCount = countSentences(summary);
-  const uniqueWordRatio =
-    summaryWordCount === 0 ? 0 : new Set(summaryWords).size / summaryWordCount;
-
-  const summaryLengthScore = clampScore((summaryWordCount / 45) * 30, 0, 30);
-  const summarySentenceScore = clampScore(summarySentenceCount * 6, 0, 18);
-  const lexicalDiversityScore = clampScore(uniqueWordRatio * 18, 0, 18);
-
-  let verdictScore = 0;
-  const verdict = synthesis.verdict?.trim();
-  if (verdict) {
-    const verdictWordCount = tokenizeWords(verdict).length;
-    verdictScore = clampScore(6 + verdictWordCount * 0.8, 0, 16);
-  }
-
-  const recommendations = synthesis.recommendations ?? [];
-  const recommendationCount = recommendations.length;
-  const recommendationWordCount = recommendations.reduce(
-    (total, recommendation) => total + tokenizeWords(recommendation.text).length,
-    0
-  );
-  const averageRecommendationWords =
-    recommendationCount > 0 ? recommendationWordCount / recommendationCount : 0;
-
-  let recommendationScore = 0;
-  if (recommendationCount > 0) {
-    const countScore = clampScore(recommendationCount * 5, 0, 12);
-    const depthScore = clampScore(averageRecommendationWords * 0.6, 0, 8);
-    const priorityScore = clampScore(
-      recommendations.filter((item) => item.priority !== undefined).length * 1.5,
-      0,
-      4
-    );
-    recommendationScore = countScore + depthScore + priorityScore;
-  }
-
-  const citationScore = clampScore(
-    countCitationMarkers(summary) + countCitationMarkers(verdict ?? ""),
-    0,
-    4
-  );
-
-  const score =
-    summaryLengthScore +
-    summarySentenceScore +
-    lexicalDiversityScore +
-    verdictScore +
-    recommendationScore +
-    citationScore;
-
-  return Number(clampScore(score, 0, 100).toFixed(2));
-}
-
 function computeQualityGateResult(
   transcript: Transcript,
-  config: OrchestratorConfig
-):
-  | {
-      threshold: number;
-      score: number;
-      passed: boolean;
-      phaseScores: number[];
-      synthesisScore?: number;
-    }
-  | undefined {
+  config: OrchestratorConfig,
+  evaluationTier: ActionabilityEvaluationTier
+): ReturnType<typeof evaluateTranscriptActionability> | undefined {
   if (!config.qualityGate?.enabled) {
     return undefined;
   }
 
-  const judgePhaseRecords = Array.isArray(transcript.metadata?.judgePhases)
-    ? (transcript.metadata.judgePhases as Array<{ decision?: { score?: number } }>)
-    : [];
-  const phaseScores = judgePhaseRecords
-    .map((record) => record.decision?.score)
-    .filter((score): score is number => typeof score === "number" && Number.isFinite(score));
-  const synthesisScore = computeSynthesisQualityScore(transcript);
-  let score = 0;
-  if (phaseScores.length > 0 || synthesisScore !== undefined) {
-    const phaseTotal = phaseScores.reduce((total, value) => total + value, 0);
-    const synthesisWeight = synthesisScore === undefined ? 0 : 1.5;
-    const weightedTotal = phaseTotal + (synthesisScore ?? 0) * synthesisWeight;
-    const weightDenominator = phaseScores.length + synthesisWeight;
-    score = Number((weightedTotal / weightDenominator).toFixed(2));
-  }
-
-  return {
-    threshold: config.qualityGate.threshold,
-    score,
-    passed: score >= config.qualityGate.threshold,
-    phaseScores,
-    synthesisScore
-  };
+  return evaluateTranscriptActionability(transcript, {
+    evaluationTier,
+    threshold: config.qualityGate.threshold
+  });
 }
 
 export async function runDiscussion(input: RunDiscussionInput): Promise<RunDiscussionResult> {
   const config = mergeOrchestratorConfig(input.adapter, input.config);
+  const evaluationTier = input.evaluationTier ?? "baseline";
   const retriever =
     input.retriever ??
     (config.citations?.mode === "optional_web" ? new NoopRetriever() : undefined);
@@ -531,7 +417,11 @@ export async function runDiscussion(input: RunDiscussionInput): Promise<RunDiscu
       });
     }
 
-    const qualityGateResult = computeQualityGateResult(context.transcript, config);
+    const qualityGateResult = computeQualityGateResult(
+      context.transcript,
+      config,
+      evaluationTier
+    );
     if (qualityGateResult && (config.qualityGate?.recordInTranscriptMetadata ?? true)) {
       context = updateTranscript(
         context,

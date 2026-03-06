@@ -13,6 +13,13 @@ import { ProviderRegistry } from "./provider-registry";
 
 export type ProviderMode = "mock" | "live" | "auto";
 
+export interface ProviderSupportDescriptor {
+  providerId: ProviderId;
+  recognized: boolean;
+  liveCapable: boolean;
+  requiredEnv: string[];
+}
+
 export interface CreateProviderRegistryForRunInput {
   adapter: DomainAdapter;
   providerMode: ProviderMode;
@@ -25,6 +32,7 @@ interface CredentialRequirement {
 
 const LIVE_PROVIDER_IDS = new Set<ProviderId>(["gemini", "kimi", "openai", "claude"]);
 const IMPLEMENTED_LIVE_PROVIDER_IDS = new Set<ProviderId>(["gemini", "kimi"]);
+export const LIVE_CERTIFICATION_PROVIDER_IDS = ["gemini", "kimi"] as const;
 
 export function collectRequiredProviderIds(adapter: DomainAdapter): ProviderId[] {
   const required = new Set<ProviderId>();
@@ -58,6 +66,21 @@ export function getCredentialRequirement(providerId: ProviderId): CredentialRequ
 
 export function isProviderImplemented(providerId: ProviderId): boolean {
   return IMPLEMENTED_LIVE_PROVIDER_IDS.has(providerId);
+}
+
+export function describeProviderSupport(providerId: ProviderId): ProviderSupportDescriptor {
+  const requirement = getCredentialRequirement(providerId);
+
+  return {
+    providerId,
+    recognized: providerId === "mock" || LIVE_PROVIDER_IDS.has(providerId),
+    liveCapable: isProviderImplemented(providerId),
+    requiredEnv: requirement?.requiredEnv ?? []
+  };
+}
+
+export function getAdapterProviderCapabilities(adapter: DomainAdapter): ProviderSupportDescriptor[] {
+  return collectRequiredProviderIds(adapter).map((providerId) => describeProviderSupport(providerId));
 }
 
 function assertSupportedLiveProvider(providerId: ProviderId): void {

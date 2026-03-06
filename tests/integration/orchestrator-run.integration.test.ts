@@ -61,6 +61,19 @@ describe("integration/orchestrator-run", () => {
       expect(qualityGate?.threshold).toBe(75);
       expect(typeof qualityGate?.score).toBe("number");
       expect(typeof qualityGate?.passed).toBe("boolean");
+      expect(qualityGate).toMatchObject({
+        evaluationTier: "baseline",
+        rubricVersion: expect.any(String),
+        subscores: {
+          structuralCompleteness: expect.any(Number),
+          recommendationSpecificity: expect.any(Number),
+          grounding: expect.any(Number),
+          nonRedundancy: expect.any(Number),
+          prioritizedNextStepUsefulness: expect.any(Number)
+        },
+        penalties: expect.any(Array),
+        failureReasons: expect.any(Array)
+      });
       expect(result.persistedPath).toBeDefined();
 
       const contents = await readFile(result.persistedPath as string, "utf8");
@@ -74,6 +87,10 @@ describe("integration/orchestrator-run", () => {
       expect(parsed.metadata?.judgeRounds).toBeUndefined();
       expect(parsed.metadata?.judgePhases).toBeDefined();
       expect(parsed.metadata?.qualityGate).toBeDefined();
+      expect(parsed.metadata?.qualityGate).toMatchObject({
+        evaluationTier: "baseline",
+        rubricVersion: expect.any(String)
+      });
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }

@@ -1,4 +1,6 @@
 import type { Message, RunContext, SynthesisOutput } from "../../types";
+import type { ActionabilityEvaluation } from "../../core/actionability";
+import type { ProviderMode, ProviderSupportDescriptor } from "../../providers/provider-bootstrap";
 
 import {
   formatMessage,
@@ -20,7 +22,14 @@ export class TerminalRenderer {
     this.options = options;
   }
 
-  renderHeader(input: { runId: string; adapterName: string; topic: string }): void {
+  renderHeader(input: {
+    runId: string;
+    adapterName: string;
+    topic: string;
+    providerMode: ProviderMode;
+    evaluationTier: string;
+    providerSupport: ProviderSupportDescriptor[];
+  }): void {
     console.log(formatRunHeader(input));
   }
 
@@ -33,8 +42,12 @@ export class TerminalRenderer {
     );
   }
 
-  renderSummary(context: RunContext, persistedPath?: string): void {
-    console.log(formatRunSummary({ context, persistedPath }));
+  renderSummary(
+    context: RunContext,
+    persistedPath?: string,
+    actionability?: ActionabilityEvaluation
+  ): void {
+    console.log(formatRunSummary({ context, persistedPath, actionability }));
   }
 
   renderSynthesis(synthesis?: SynthesisOutput): void {
