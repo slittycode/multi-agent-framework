@@ -1,0 +1,82 @@
+{
+  "generatedAt": "2026-03-05T23:03:37.923Z",
+  "baselineInputTokens": 15357,
+  "targetInputTokens": 11518,
+  "qualityThreshold": 75,
+  "meanInputTokens": 9766.11,
+  "meanQualityScore": 77.98,
+  "entries": [
+    {
+      "adapterId": "general-debate",
+      "topic": "Is remote work better than office work?",
+      "inputTokens": 8273,
+      "outputTokens": 1907,
+      "qualityScore": 83.33,
+      "qualityPassed": true
+    },
+    {
+      "adapterId": "general-debate",
+      "topic": "How should teams balance experimentation and reliability?",
+      "inputTokens": 8382,
+      "outputTokens": 2138,
+      "qualityScore": 85.56,
+      "qualityPassed": true
+    },
+    {
+      "adapterId": "general-debate",
+      "topic": "What makes creative feedback actionable?",
+      "inputTokens": 9269,
+      "outputTokens": 2300,
+      "qualityScore": 91.56,
+      "qualityPassed": true
+    },
+    {
+      "adapterId": "creative-writing",
+      "topic": "Is remote work better than office work?",
+      "inputTokens": 9882,
+      "outputTokens": 2731,
+      "qualityScore": 60,
+      "qualityPassed": false
+    },
+    {
+      "adapterId": "creative-writing",
+      "topic": "How should teams balance experimentation and reliability?",
+      "inputTokens": 9931,
+      "outputTokens": 2465,
+      "qualityScore": 68.89,
+      "qualityPassed": false
+    },
+    {
+      "adapterId": "creative-writing",
+      "topic": "What makes creative feedback actionable?",
+      "inputTokens": 9164,
+      "outputTokens": 2384,
+      "qualityScore": 78.89,
+      "qualityPassed": true
+    },
+    {
+      "adapterId": "ableton-feedback",
+      "topic": "Is remote work better than office work?",
+      "inputTokens": 8107,
+      "outputTokens": 2078,
+      "qualityScore": 53.78,
+      "qualityPassed": false
+    },
+    {
+      "adapterId": "ableton-feedback",
+      "topic": "How should teams balance experimentation and reliability?",
+      "inputTokens": 11395,
+      "outputTokens": 3260,
+      "qualityScore": 88,
+      "qualityPassed": true
+    },
+    {
+      "adapterId": "ableton-feedback",
+      "topic": "What makes creative feedback actionable?",
+      "inputTokens": 13492,
+      "outputTokens": 3661,
+      "qualityScore": 91.78,
+      "qualityPassed": true
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "generatedAt": "2026-03-06T01:43:56.326Z",
+  "entryId": "gemini-general-debate-3",
+  "evaluationTier": "baseline",
+  "providerMode": "mock",
+  "adapterId": "general-debate",
+  "providerId": "gemini",
+  "topic": "What makes creative feedback actionable?",
+  "transcriptPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/transcripts/benchmark-gemini-general-debate-3.transcript.json",
+  "failureReasons": [
+    "Synthesis verdict is missing.",
+    "Missing at least three prioritized recommendations.",
+    "Recommendations are not fully prioritized.",
+    "Generic filler language reduced actionability.",
+    "Synthesis summary is too short to support action.",
+    "Actionability score 10.00 is below threshold 75."
+  ],
+  "providerInvocationIds": [
+    "mock-inv-970272bf",
+    "mock-inv-f23b15be",
+    "mock-inv-a496b81d",
+    "mock-inv-abf8ae35",
+    "mock-inv-0a0b6863",
+    "mock-inv-340afc5b",
+    "mock-inv-fab3d8d7"
+  ],
+  "providerModels": [
+    "gemini:gemini-2.5-flash"
+  ],
+  "totalLatencyMs": 0,
+  "actionability": {
+    "rubricVersion": "2026-03-06.v1",
+    "evaluationTier": "baseline",
+    "threshold": 75,
+    "score": 10,
+    "passed": false,
+    "subscores": {
+      "structuralCompleteness": 6,
+      "recommendationSpecificity": 0,
+      "grounding": 16,
+      "nonRedundancy": 18,
+      "prioritizedNextStepUsefulness": 0
+    },
+    "penalties": [
+      {
+        "code": "MISSING_RECOMMENDATIONS",
+        "points": 18,
+        "reason": "Missing at least three prioritized recommendations."
+      },
+      {
+        "code": "GENERIC_FILLER",
+        "points": 12,
+        "reason": "Generic filler language reduced actionability."
+      }
+    ],
+    "failureReasons": [
+      "Synthesis verdict is missing.",
+      "Missing at least three prioritized recommendations.",
+      "Recommendations are not fully prioritized.",
+      "Generic filler language reduced actionability.",
+      "Synthesis summary is too short to support action.",
+      "Actionability score 10.00 is below threshold 75."
+    ]
+  }
+}

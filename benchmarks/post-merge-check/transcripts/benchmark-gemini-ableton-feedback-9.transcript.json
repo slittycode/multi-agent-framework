@@ -1,0 +1,264 @@
+{
+  "runId": "benchmark-gemini-ableton-feedback-9",
+  "adapterId": "ableton-feedback",
+  "topic": "How do you decide when a track is finished?",
+  "startedAt": "2026-03-06T01:43:56.330Z",
+  "status": "completed",
+  "messages": [
+    {
+      "id": "9c6debe3-fb24-4356-a41c-2795a91390b0",
+      "runId": "benchmark-gemini-ableton-feedback-9",
+      "roundId": "feedback-round",
+      "phaseId": "opening",
+      "turnIndex": 1,
+      "timestamp": "2026-03-06T01:43:56.331Z",
+      "from": "technical-critic",
+      "to": "all",
+      "kind": "agent_turn",
+      "content": "[mock:technical-critic] I partially agree, but the trade-offs need to be made explicit. [sig:8928628a]",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-6df63963",
+      "usage": {
+        "inputTokens": 150,
+        "outputTokens": 13,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "3aa7f641-0dd9-45a8-b300-be004d96fe7a",
+      "runId": "benchmark-gemini-ableton-feedback-9",
+      "roundId": "feedback-round",
+      "phaseId": "opening",
+      "turnIndex": 2,
+      "timestamp": "2026-03-06T01:43:56.331Z",
+      "from": "emotional-listener",
+      "to": "all",
+      "kind": "agent_turn",
+      "content": "[mock:emotional-listener] I support this position and can back it with concrete examples. [sig:dcf89b82]",
+      "respondingToMessageId": "9c6debe3-fb24-4356-a41c-2795a91390b0",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-6b2c8471",
+      "usage": {
+        "inputTokens": 206,
+        "outputTokens": 13,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "d2529abf-a927-470f-82ed-8ff94fca73a8",
+      "runId": "benchmark-gemini-ableton-feedback-9",
+      "roundId": "feedback-round",
+      "phaseId": "challenge",
+      "turnIndex": 3,
+      "timestamp": "2026-03-06T01:43:56.331Z",
+      "from": "emotional-listener",
+      "to": "all",
+      "kind": "challenge",
+      "content": "[mock:emotional-listener] The argument is strong in principle, yet execution details are underspecified. [sig:e9409603]",
+      "respondingToMessageId": "3aa7f641-0dd9-45a8-b300-be004d96fe7a",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-a231071b",
+      "usage": {
+        "inputTokens": 230,
+        "outputTokens": 13,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "975ae9e2-95ef-4cf7-8980-8174577d288c",
+      "runId": "benchmark-gemini-ableton-feedback-9",
+      "roundId": "feedback-round",
+      "phaseId": "challenge",
+      "turnIndex": 4,
+      "timestamp": "2026-03-06T01:43:56.331Z",
+      "from": "technical-critic",
+      "to": "all",
+      "kind": "challenge",
+      "content": "[mock:technical-critic] I partially agree, but the trade-offs need to be made explicit. [sig:20c5709c]",
+      "respondingToMessageId": "d2529abf-a927-470f-82ed-8ff94fca73a8",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-4a43e870",
+      "usage": {
+        "inputTokens": 273,
+        "outputTokens": 13,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "605bf962-064e-464e-9403-e45616f0387f",
+      "runId": "benchmark-gemini-ableton-feedback-9",
+      "roundId": "feedback-round",
+      "phaseId": "rebuttal",
+      "turnIndex": 5,
+      "timestamp": "2026-03-06T01:43:56.331Z",
+      "from": "technical-critic",
+      "to": "all",
+      "kind": "rebuttal",
+      "content": "[mock:technical-critic] The next step should prioritize clarity, measurable outcomes, and iteration speed. [sig:11334893]",
+      "respondingToMessageId": "975ae9e2-95ef-4cf7-8980-8174577d288c",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-daf76d54",
+      "usage": {
+        "inputTokens": 289,
+        "outputTokens": 13,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "f9e5799e-ed57-4478-ab8b-b25d397fd983",
+      "runId": "benchmark-gemini-ableton-feedback-9",
+      "roundId": "feedback-round",
+      "phaseId": "rebuttal",
+      "turnIndex": 6,
+      "timestamp": "2026-03-06T01:43:56.331Z",
+      "from": "emotional-listener",
+      "to": "all",
+      "kind": "rebuttal",
+      "content": "[mock:emotional-listener] I partially agree, but the trade-offs need to be made explicit. [sig:d853be32]",
+      "respondingToMessageId": "605bf962-064e-464e-9403-e45616f0387f",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-2667426b",
+      "usage": {
+        "inputTokens": 324,
+        "outputTokens": 13,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "fd6349c8-1045-40b6-9baf-421ce0ed5149",
+      "runId": "benchmark-gemini-ableton-feedback-9",
+      "roundId": "feedback-round",
+      "phaseId": "synthesis",
+      "turnIndex": 7,
+      "timestamp": "2026-03-06T01:43:56.331Z",
+      "from": "producer-synthesiser",
+      "to": "all",
+      "kind": "synthesis",
+      "content": "[mock:producer-synthesiser] I support this position and can back it with concrete examples. [sig:53ba0cbe]",
+      "respondingToMessageId": "f9e5799e-ed57-4478-ab8b-b25d397fd983",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-5da28a2d",
+      "usage": {
+        "inputTokens": 358,
+        "outputTokens": 13,
+        "latencyMs": 0
+      }
+    }
+  ],
+  "metadata": {
+    "benchmarkEntryId": "gemini-ableton-feedback-9",
+    "evaluationTier": "baseline",
+    "providerMode": "mock",
+    "providerId": "gemini",
+    "judgePhases": [
+      {
+        "roundId": "feedback-round",
+        "roundName": "Track Feedback Round",
+        "phaseId": "opening",
+        "phaseName": "Opening",
+        "timestamp": "2026-03-06T01:43:56.331Z",
+        "decision": {
+          "finished": false,
+          "rationale": "parse failure"
+        },
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+        "providerInvocationId": "mock-inv-825d8ccf"
+      },
+      {
+        "roundId": "feedback-round",
+        "roundName": "Track Feedback Round",
+        "phaseId": "challenge",
+        "phaseName": "Challenge",
+        "timestamp": "2026-03-06T01:43:56.331Z",
+        "decision": {
+          "finished": false,
+          "rationale": "parse failure"
+        },
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+        "providerInvocationId": "mock-inv-e7c22cd0"
+      },
+      {
+        "roundId": "feedback-round",
+        "roundName": "Track Feedback Round",
+        "phaseId": "rebuttal",
+        "phaseName": "Rebuttal",
+        "timestamp": "2026-03-06T01:43:56.331Z",
+        "decision": {
+          "finished": false,
+          "rationale": "parse failure"
+        },
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+        "providerInvocationId": "mock-inv-cb742b99"
+      }
+    ],
+    "qualityGate": {
+      "rubricVersion": "2026-03-06.v1",
+      "evaluationTier": "baseline",
+      "threshold": 75,
+      "score": 7.5,
+      "passed": false,
+      "subscores": {
+        "structuralCompleteness": 6,
+        "recommendationSpecificity": 0,
+        "grounding": 13.5,
+        "nonRedundancy": 18,
+        "prioritizedNextStepUsefulness": 0
+      },
+      "penalties": [
+        {
+          "code": "MISSING_RECOMMENDATIONS",
+          "points": 18,
+          "reason": "Missing at least three prioritized recommendations."
+        },
+        {
+          "code": "GENERIC_FILLER",
+          "points": 12,
+          "reason": "Generic filler language reduced actionability."
+        }
+      ],
+      "failureReasons": [
+        "Synthesis verdict is missing.",
+        "Missing at least three prioritized recommendations.",
+        "Recommendations are not fully prioritized.",
+        "Generic filler language reduced actionability.",
+        "Synthesis summary is too short to support action.",
+        "Actionability score 7.50 is below threshold 75."
+      ]
+    }
+  },
+  "synthesis": {
+    "agentId": "producer-synthesiser",
+    "messageId": "fd6349c8-1045-40b6-9baf-421ce0ed5149",
+    "summary": "[mock:producer-synthesiser] I support this position and can back it with concrete examples. [sig:53ba0cbe]",
+    "raw": "[mock:producer-synthesiser] I support this position and can back it with concrete examples. [sig:53ba0cbe]"
+  },
+  "endedAt": "2026-03-06T01:43:56.331Z"
+}

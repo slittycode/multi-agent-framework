@@ -1,0 +1,264 @@
+{
+  "runId": "benchmark-gemini-general-debate-3",
+  "adapterId": "general-debate",
+  "topic": "What makes creative feedback actionable?",
+  "startedAt": "2026-03-06T01:43:56.325Z",
+  "status": "completed",
+  "messages": [
+    {
+      "id": "2a62b15d-93d8-465c-b220-bc566078034b",
+      "runId": "benchmark-gemini-general-debate-3",
+      "roundId": "main-round",
+      "phaseId": "opening",
+      "turnIndex": 1,
+      "timestamp": "2026-03-06T01:43:56.325Z",
+      "from": "advocate",
+      "to": "all",
+      "kind": "agent_turn",
+      "content": "[mock:advocate] A balanced view suggests keeping strengths while mitigating obvious risks. [sig:74d1a4b8]",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-970272bf",
+      "usage": {
+        "inputTokens": 139,
+        "outputTokens": 12,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "050b09ef-c9db-4626-a24d-f08ae4c68ea2",
+      "runId": "benchmark-gemini-general-debate-3",
+      "roundId": "main-round",
+      "phaseId": "opening",
+      "turnIndex": 2,
+      "timestamp": "2026-03-06T01:43:56.325Z",
+      "from": "critic",
+      "to": "all",
+      "kind": "agent_turn",
+      "content": "[mock:critic] The argument is strong in principle, yet execution details are underspecified. [sig:54e69ded]",
+      "respondingToMessageId": "2a62b15d-93d8-465c-b220-bc566078034b",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-f23b15be",
+      "usage": {
+        "inputTokens": 197,
+        "outputTokens": 13,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "435575b0-0960-476b-a721-d29eb7d8c615",
+      "runId": "benchmark-gemini-general-debate-3",
+      "roundId": "main-round",
+      "phaseId": "challenge",
+      "turnIndex": 3,
+      "timestamp": "2026-03-06T01:43:56.326Z",
+      "from": "critic",
+      "to": "all",
+      "kind": "challenge",
+      "content": "[mock:critic] A balanced view suggests keeping strengths while mitigating obvious risks. [sig:227ca016]",
+      "respondingToMessageId": "050b09ef-c9db-4626-a24d-f08ae4c68ea2",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-a496b81d",
+      "usage": {
+        "inputTokens": 219,
+        "outputTokens": 12,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "ec1df294-d068-4c12-9568-99cad47189fa",
+      "runId": "benchmark-gemini-general-debate-3",
+      "roundId": "main-round",
+      "phaseId": "challenge",
+      "turnIndex": 4,
+      "timestamp": "2026-03-06T01:43:56.326Z",
+      "from": "advocate",
+      "to": "all",
+      "kind": "challenge",
+      "content": "[mock:advocate] The argument is strong in principle, yet execution details are underspecified. [sig:01e8be7b]",
+      "respondingToMessageId": "435575b0-0960-476b-a721-d29eb7d8c615",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-abf8ae35",
+      "usage": {
+        "inputTokens": 253,
+        "outputTokens": 13,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "5054bb3e-01e7-4ff2-951c-d237c70d3c20",
+      "runId": "benchmark-gemini-general-debate-3",
+      "roundId": "main-round",
+      "phaseId": "rebuttal",
+      "turnIndex": 5,
+      "timestamp": "2026-03-06T01:43:56.326Z",
+      "from": "advocate",
+      "to": "all",
+      "kind": "rebuttal",
+      "content": "[mock:advocate] The argument is strong in principle, yet execution details are underspecified. [sig:2d7c4c31]",
+      "respondingToMessageId": "ec1df294-d068-4c12-9568-99cad47189fa",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-0a0b6863",
+      "usage": {
+        "inputTokens": 273,
+        "outputTokens": 13,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "c39c59fe-3965-49de-8bd0-b34e43667663",
+      "runId": "benchmark-gemini-general-debate-3",
+      "roundId": "main-round",
+      "phaseId": "rebuttal",
+      "turnIndex": 6,
+      "timestamp": "2026-03-06T01:43:56.326Z",
+      "from": "critic",
+      "to": "all",
+      "kind": "rebuttal",
+      "content": "[mock:critic] The argument is strong in principle, yet execution details are underspecified. [sig:ea283221]",
+      "respondingToMessageId": "5054bb3e-01e7-4ff2-951c-d237c70d3c20",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-340afc5b",
+      "usage": {
+        "inputTokens": 313,
+        "outputTokens": 13,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "837d538e-c256-498b-854e-70d7fb99135d",
+      "runId": "benchmark-gemini-general-debate-3",
+      "roundId": "main-round",
+      "phaseId": "synthesis",
+      "turnIndex": 7,
+      "timestamp": "2026-03-06T01:43:56.326Z",
+      "from": "synthesiser",
+      "to": "all",
+      "kind": "synthesis",
+      "content": "[mock:synthesiser] A balanced view suggests keeping strengths while mitigating obvious risks. [sig:b25bb09c]",
+      "respondingToMessageId": "c39c59fe-3965-49de-8bd0-b34e43667663",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-fab3d8d7",
+      "usage": {
+        "inputTokens": 343,
+        "outputTokens": 12,
+        "latencyMs": 0
+      }
+    }
+  ],
+  "metadata": {
+    "benchmarkEntryId": "gemini-general-debate-3",
+    "evaluationTier": "baseline",
+    "providerMode": "mock",
+    "providerId": "gemini",
+    "judgePhases": [
+      {
+        "roundId": "main-round",
+        "roundName": "Main Debate Round",
+        "phaseId": "opening",
+        "phaseName": "Opening",
+        "timestamp": "2026-03-06T01:43:56.326Z",
+        "decision": {
+          "finished": false,
+          "rationale": "parse failure"
+        },
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+        "providerInvocationId": "mock-inv-0542b024"
+      },
+      {
+        "roundId": "main-round",
+        "roundName": "Main Debate Round",
+        "phaseId": "challenge",
+        "phaseName": "Challenge",
+        "timestamp": "2026-03-06T01:43:56.326Z",
+        "decision": {
+          "finished": false,
+          "rationale": "parse failure"
+        },
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+        "providerInvocationId": "mock-inv-d6742393"
+      },
+      {
+        "roundId": "main-round",
+        "roundName": "Main Debate Round",
+        "phaseId": "rebuttal",
+        "phaseName": "Rebuttal",
+        "timestamp": "2026-03-06T01:43:56.326Z",
+        "decision": {
+          "finished": false,
+          "rationale": "parse failure"
+        },
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+        "providerInvocationId": "mock-inv-7b07d1ee"
+      }
+    ],
+    "qualityGate": {
+      "rubricVersion": "2026-03-06.v1",
+      "evaluationTier": "baseline",
+      "threshold": 75,
+      "score": 10,
+      "passed": false,
+      "subscores": {
+        "structuralCompleteness": 6,
+        "recommendationSpecificity": 0,
+        "grounding": 16,
+        "nonRedundancy": 18,
+        "prioritizedNextStepUsefulness": 0
+      },
+      "penalties": [
+        {
+          "code": "MISSING_RECOMMENDATIONS",
+          "points": 18,
+          "reason": "Missing at least three prioritized recommendations."
+        },
+        {
+          "code": "GENERIC_FILLER",
+          "points": 12,
+          "reason": "Generic filler language reduced actionability."
+        }
+      ],
+      "failureReasons": [
+        "Synthesis verdict is missing.",
+        "Missing at least three prioritized recommendations.",
+        "Recommendations are not fully prioritized.",
+        "Generic filler language reduced actionability.",
+        "Synthesis summary is too short to support action.",
+        "Actionability score 10.00 is below threshold 75."
+      ]
+    }
+  },
+  "synthesis": {
+    "agentId": "synthesiser",
+    "messageId": "837d538e-c256-498b-854e-70d7fb99135d",
+    "summary": "[mock:synthesiser] A balanced view suggests keeping strengths while mitigating obvious risks. [sig:b25bb09c]",
+    "raw": "[mock:synthesiser] A balanced view suggests keeping strengths while mitigating obvious risks. [sig:b25bb09c]"
+  },
+  "endedAt": "2026-03-06T01:43:56.326Z"
+}

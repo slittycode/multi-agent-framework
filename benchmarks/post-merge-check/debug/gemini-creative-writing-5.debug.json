@@ -1,0 +1,65 @@
+{
+  "generatedAt": "2026-03-06T01:43:56.328Z",
+  "entryId": "gemini-creative-writing-5",
+  "evaluationTier": "baseline",
+  "providerMode": "mock",
+  "adapterId": "creative-writing",
+  "providerId": "gemini",
+  "topic": "What makes a villain more compelling than the hero?",
+  "transcriptPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/transcripts/benchmark-gemini-creative-writing-5.transcript.json",
+  "failureReasons": [
+    "Synthesis verdict is missing.",
+    "Missing at least three prioritized recommendations.",
+    "Recommendations are not fully prioritized.",
+    "Generic filler language reduced actionability.",
+    "Synthesis summary is too short to support action.",
+    "Actionability score 10.00 is below threshold 75."
+  ],
+  "providerInvocationIds": [
+    "mock-inv-4eb219bf",
+    "mock-inv-28c24308",
+    "mock-inv-06134a62",
+    "mock-inv-0816980e",
+    "mock-inv-9dc40ec8",
+    "mock-inv-b16bbc77",
+    "mock-inv-d744ad67"
+  ],
+  "providerModels": [
+    "gemini:gemini-2.5-flash"
+  ],
+  "totalLatencyMs": 0,
+  "actionability": {
+    "rubricVersion": "2026-03-06.v1",
+    "evaluationTier": "baseline",
+    "threshold": 75,
+    "score": 10,
+    "passed": false,
+    "subscores": {
+      "structuralCompleteness": 6,
+      "recommendationSpecificity": 0,
+      "grounding": 16,
+      "nonRedundancy": 18,
+      "prioritizedNextStepUsefulness": 0
+    },
+    "penalties": [
+      {
+        "code": "MISSING_RECOMMENDATIONS",
+        "points": 18,
+        "reason": "Missing at least three prioritized recommendations."
+      },
+      {
+        "code": "GENERIC_FILLER",
+        "points": 12,
+        "reason": "Generic filler language reduced actionability."
+      }
+    ],
+    "failureReasons": [
+      "Synthesis verdict is missing.",
+      "Missing at least three prioritized recommendations.",
+      "Recommendations are not fully prioritized.",
+      "Generic filler language reduced actionability.",
+      "Synthesis summary is too short to support action.",
+      "Actionability score 10.00 is below threshold 75."
+    ]
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "generatedAt": "2026-03-06T01:43:56.330Z",
+  "entryId": "gemini-ableton-feedback-8",
+  "evaluationTier": "baseline",
+  "providerMode": "mock",
+  "adapterId": "ableton-feedback",
+  "providerId": "gemini",
+  "topic": "What is the role of silence and space in electronic music?",
+  "transcriptPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/transcripts/benchmark-gemini-ableton-feedback-8.transcript.json",
+  "failureReasons": [
+    "Synthesis verdict is missing.",
+    "Missing at least three prioritized recommendations.",
+    "Recommendations are not fully prioritized.",
+    "Generic filler language reduced actionability.",
+    "Synthesis summary is too short to support action.",
+    "Actionability score 7.50 is below threshold 75."
+  ],
+  "providerInvocationIds": [
+    "mock-inv-6c6dbff9",
+    "mock-inv-1ebacb24",
+    "mock-inv-ddb1a54e",
+    "mock-inv-c8b8466d",
+    "mock-inv-a3d53161",
+    "mock-inv-01551c46",
+    "mock-inv-0043cf3d"
+  ],
+  "providerModels": [
+    "gemini:gemini-2.5-flash"
+  ],
+  "totalLatencyMs": 0,
+  "actionability": {
+    "rubricVersion": "2026-03-06.v1",
+    "evaluationTier": "baseline",
+    "threshold": 75,
+    "score": 7.5,
+    "passed": false,
+    "subscores": {
+      "structuralCompleteness": 6,
+      "recommendationSpecificity": 0,
+      "grounding": 13.5,
+      "nonRedundancy": 18,
+      "prioritizedNextStepUsefulness": 0
+    },
+    "penalties": [
+      {
+        "code": "MISSING_RECOMMENDATIONS",
+        "points": 18,
+        "reason": "Missing at least three prioritized recommendations."
+      },
+      {
+        "code": "GENERIC_FILLER",
+        "points": 12,
+        "reason": "Generic filler language reduced actionability."
+      }
+    ],
+    "failureReasons": [
+      "Synthesis verdict is missing.",
+      "Missing at least three prioritized recommendations.",
+      "Recommendations are not fully prioritized.",
+      "Generic filler language reduced actionability.",
+      "Synthesis summary is too short to support action.",
+      "Actionability score 7.50 is below threshold 75."
+    ]
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "generatedAt": "2026-03-05T23:26:12.592Z",
+  "baselineInputTokens": 15357,
+  "targetInputTokens": 11518,
+  "qualityThreshold": 75,
+  "meanInputTokens": 9875.11,
+  "meanQualityScore": 86.79,
+  "entries": [
+    {
+      "adapterId": "general-debate",
+      "topic": "Is remote work better than office work?",
+      "inputTokens": 8701,
+      "outputTokens": 1946,
+      "qualityScore": 81.11,
+      "qualityPassed": true
+    },
+    {
+      "adapterId": "general-debate",
+      "topic": "How should teams balance experimentation and reliability?",
+      "inputTokens": 7718,
+      "outputTokens": 2046,
+      "qualityScore": 87.78,
+      "qualityPassed": true
+    },
+    {
+      "adapterId": "general-debate",
+      "topic": "What makes creative feedback actionable?",
+      "inputTokens": 9184,
+      "outputTokens": 2142,
+      "qualityScore": 86.89,
+      "qualityPassed": true
+    },
+    {
+      "adapterId": "creative-writing",
+      "topic": "Write a story about an AI that becomes self-aware",
+      "inputTokens": 13051,
+      "outputTokens": 3921,
+      "qualityScore": 89.33,
+      "qualityPassed": true
+    },
+    {
+      "adapterId": "creative-writing",
+      "topic": "What makes a villain more compelling than the hero?",
+      "inputTokens": 10099,
+      "outputTokens": 2567,
+      "qualityScore": 77.78,
+      "qualityPassed": true
+    },
+    {
+      "adapterId": "creative-writing",
+      "topic": "How does setting shape character in fiction?",
+      "inputTokens": 9494,
+      "outputTokens": 2476,
+      "qualityScore": 83.78,
+      "qualityPassed": true
+    },
+    {
+      "adapterId": "ableton-feedback",
+      "topic": "How should a producer approach mixing a dense arrangement?",
+      "inputTokens": 11440,
+      "outputTokens": 3268,
+      "qualityScore": 90,
+      "qualityPassed": true
+    },
+    {
+      "adapterId": "ableton-feedback",
+      "topic": "What is the role of silence and space in electronic music?",
+      "inputTokens": 10533,
+      "outputTokens": 2710,
+      "qualityScore": 95.11,
+      "qualityPassed": true
+    },
+    {
+      "adapterId": "ableton-feedback",
+      "topic": "How do you decide when a track is finished?",
+      "inputTokens": 8656,
+      "outputTokens": 2552,
+      "qualityScore": 89.33,
+      "qualityPassed": true
+    }
+  ]
+}

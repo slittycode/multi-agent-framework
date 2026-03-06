@@ -1,0 +1,264 @@
+{
+  "runId": "benchmark-gemini-creative-writing-5",
+  "adapterId": "creative-writing",
+  "topic": "What makes a villain more compelling than the hero?",
+  "startedAt": "2026-03-06T01:43:56.327Z",
+  "status": "completed",
+  "messages": [
+    {
+      "id": "8fc2c455-fe75-4910-9b03-6da72531809c",
+      "runId": "benchmark-gemini-creative-writing-5",
+      "roundId": "workshop-round",
+      "phaseId": "opening",
+      "turnIndex": 1,
+      "timestamp": "2026-03-06T01:43:56.327Z",
+      "from": "narrative-voice",
+      "to": "all",
+      "kind": "agent_turn",
+      "content": "[mock:narrative-voice] A balanced view suggests keeping strengths while mitigating obvious risks. [sig:dcf74b98]",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-4eb219bf",
+      "usage": {
+        "inputTokens": 145,
+        "outputTokens": 12,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "4656e721-6631-4ebc-acea-8c91fcf5cd0f",
+      "runId": "benchmark-gemini-creative-writing-5",
+      "roundId": "workshop-round",
+      "phaseId": "opening",
+      "turnIndex": 2,
+      "timestamp": "2026-03-06T01:43:56.327Z",
+      "from": "structure-editor",
+      "to": "all",
+      "kind": "agent_turn",
+      "content": "[mock:structure-editor] I support this position and can back it with concrete examples. [sig:a9219518]",
+      "respondingToMessageId": "8fc2c455-fe75-4910-9b03-6da72531809c",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-28c24308",
+      "usage": {
+        "inputTokens": 199,
+        "outputTokens": 13,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "e95d9a72-0156-406e-8249-8933e84ec2d2",
+      "runId": "benchmark-gemini-creative-writing-5",
+      "roundId": "workshop-round",
+      "phaseId": "challenge",
+      "turnIndex": 3,
+      "timestamp": "2026-03-06T01:43:56.328Z",
+      "from": "structure-editor",
+      "to": "all",
+      "kind": "challenge",
+      "content": "[mock:structure-editor] A balanced view suggests keeping strengths while mitigating obvious risks. [sig:8b2b394a]",
+      "respondingToMessageId": "4656e721-6631-4ebc-acea-8c91fcf5cd0f",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-06134a62",
+      "usage": {
+        "inputTokens": 221,
+        "outputTokens": 12,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "253929fa-f19f-4a64-bc14-66f23045a4aa",
+      "runId": "benchmark-gemini-creative-writing-5",
+      "roundId": "workshop-round",
+      "phaseId": "challenge",
+      "turnIndex": 4,
+      "timestamp": "2026-03-06T01:43:56.328Z",
+      "from": "narrative-voice",
+      "to": "all",
+      "kind": "challenge",
+      "content": "[mock:narrative-voice] A balanced view suggests keeping strengths while mitigating obvious risks. [sig:da188a32]",
+      "respondingToMessageId": "e95d9a72-0156-406e-8249-8933e84ec2d2",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-0816980e",
+      "usage": {
+        "inputTokens": 257,
+        "outputTokens": 12,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "5442fecb-0059-473d-a45e-cac8911adb08",
+      "runId": "benchmark-gemini-creative-writing-5",
+      "roundId": "workshop-round",
+      "phaseId": "rebuttal",
+      "turnIndex": 5,
+      "timestamp": "2026-03-06T01:43:56.328Z",
+      "from": "narrative-voice",
+      "to": "all",
+      "kind": "rebuttal",
+      "content": "[mock:narrative-voice] I partially agree, but the trade-offs need to be made explicit. [sig:c722f720]",
+      "respondingToMessageId": "253929fa-f19f-4a64-bc14-66f23045a4aa",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-9dc40ec8",
+      "usage": {
+        "inputTokens": 273,
+        "outputTokens": 13,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "af6f6827-42e7-474a-9469-bce8a6756f67",
+      "runId": "benchmark-gemini-creative-writing-5",
+      "roundId": "workshop-round",
+      "phaseId": "rebuttal",
+      "turnIndex": 6,
+      "timestamp": "2026-03-06T01:43:56.328Z",
+      "from": "structure-editor",
+      "to": "all",
+      "kind": "rebuttal",
+      "content": "[mock:structure-editor] The argument is strong in principle, yet execution details are underspecified. [sig:d9444e4b]",
+      "respondingToMessageId": "5442fecb-0059-473d-a45e-cac8911adb08",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-b16bbc77",
+      "usage": {
+        "inputTokens": 309,
+        "outputTokens": 13,
+        "latencyMs": 0
+      },
+      "metadata": {
+        "retrievalWarning": "Web retrieval is unavailable in this run; continuing with transcript-only citations."
+      }
+    },
+    {
+      "id": "2b4af2cb-00ac-4b79-ad4b-604f865299fb",
+      "runId": "benchmark-gemini-creative-writing-5",
+      "roundId": "workshop-round",
+      "phaseId": "synthesis",
+      "turnIndex": 7,
+      "timestamp": "2026-03-06T01:43:56.328Z",
+      "from": "synthesis-writer",
+      "to": "all",
+      "kind": "synthesis",
+      "content": "[mock:synthesis-writer] A balanced view suggests keeping strengths while mitigating obvious risks. [sig:13a1f034]",
+      "respondingToMessageId": "af6f6827-42e7-474a-9469-bce8a6756f67",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-d744ad67",
+      "usage": {
+        "inputTokens": 345,
+        "outputTokens": 12,
+        "latencyMs": 0
+      }
+    }
+  ],
+  "metadata": {
+    "benchmarkEntryId": "gemini-creative-writing-5",
+    "evaluationTier": "baseline",
+    "providerMode": "mock",
+    "providerId": "gemini",
+    "judgePhases": [
+      {
+        "roundId": "workshop-round",
+        "roundName": "Workshop Round",
+        "phaseId": "opening",
+        "phaseName": "Opening",
+        "timestamp": "2026-03-06T01:43:56.328Z",
+        "decision": {
+          "finished": false,
+          "rationale": "parse failure"
+        },
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+        "providerInvocationId": "mock-inv-76c652b6"
+      },
+      {
+        "roundId": "workshop-round",
+        "roundName": "Workshop Round",
+        "phaseId": "challenge",
+        "phaseName": "Challenge",
+        "timestamp": "2026-03-06T01:43:56.328Z",
+        "decision": {
+          "finished": false,
+          "rationale": "parse failure"
+        },
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+        "providerInvocationId": "mock-inv-27cbbe0d"
+      },
+      {
+        "roundId": "workshop-round",
+        "roundName": "Workshop Round",
+        "phaseId": "rebuttal",
+        "phaseName": "Rebuttal",
+        "timestamp": "2026-03-06T01:43:56.328Z",
+        "decision": {
+          "finished": false,
+          "rationale": "parse failure"
+        },
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+        "providerInvocationId": "mock-inv-e99902d5"
+      }
+    ],
+    "qualityGate": {
+      "rubricVersion": "2026-03-06.v1",
+      "evaluationTier": "baseline",
+      "threshold": 75,
+      "score": 10,
+      "passed": false,
+      "subscores": {
+        "structuralCompleteness": 6,
+        "recommendationSpecificity": 0,
+        "grounding": 16,
+        "nonRedundancy": 18,
+        "prioritizedNextStepUsefulness": 0
+      },
+      "penalties": [
+        {
+          "code": "MISSING_RECOMMENDATIONS",
+          "points": 18,
+          "reason": "Missing at least three prioritized recommendations."
+        },
+        {
+          "code": "GENERIC_FILLER",
+          "points": 12,
+          "reason": "Generic filler language reduced actionability."
+        }
+      ],
+      "failureReasons": [
+        "Synthesis verdict is missing.",
+        "Missing at least three prioritized recommendations.",
+        "Recommendations are not fully prioritized.",
+        "Generic filler language reduced actionability.",
+        "Synthesis summary is too short to support action.",
+        "Actionability score 10.00 is below threshold 75."
+      ]
+    }
+  },
+  "synthesis": {
+    "agentId": "synthesis-writer",
+    "messageId": "2b4af2cb-00ac-4b79-ad4b-604f865299fb",
+    "summary": "[mock:synthesis-writer] A balanced view suggests keeping strengths while mitigating obvious risks. [sig:13a1f034]",
+    "raw": "[mock:synthesis-writer] A balanced view suggests keeping strengths while mitigating obvious risks. [sig:13a1f034]"
+  },
+  "endedAt": "2026-03-06T01:43:56.328Z"
+}

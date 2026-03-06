@@ -1,0 +1,493 @@
+{
+  "generatedAt": "2026-03-06T01:43:56.331Z",
+  "evaluationTier": "baseline",
+  "providerMode": "mock",
+  "providerIds": [
+    "gemini"
+  ],
+  "rubricVersion": "2026-03-06.v1",
+  "baselineInputTokens": 15357,
+  "targetInputTokens": 11518,
+  "actionabilityThreshold": 75,
+  "meanInputTokens": 1772.89,
+  "meanActionabilityScore": 8.44,
+  "entries": [
+    {
+      "entryId": "gemini-general-debate-1",
+      "adapterId": "general-debate",
+      "providerId": "gemini",
+      "topic": "Is remote work better than office work?",
+      "inputTokens": 1739,
+      "outputTokens": 87,
+      "tokenBudgetPassed": true,
+      "actionability": {
+        "rubricVersion": "2026-03-06.v1",
+        "evaluationTier": "baseline",
+        "threshold": 75,
+        "score": 6,
+        "passed": false,
+        "subscores": {
+          "structuralCompleteness": 6,
+          "recommendationSpecificity": 0,
+          "grounding": 12,
+          "nonRedundancy": 18,
+          "prioritizedNextStepUsefulness": 0
+        },
+        "penalties": [
+          {
+            "code": "MISSING_RECOMMENDATIONS",
+            "points": 18,
+            "reason": "Missing at least three prioritized recommendations."
+          },
+          {
+            "code": "GENERIC_FILLER",
+            "points": 12,
+            "reason": "Generic filler language reduced actionability."
+          }
+        ],
+        "failureReasons": [
+          "Synthesis verdict is missing.",
+          "Missing at least three prioritized recommendations.",
+          "Recommendations are not fully prioritized.",
+          "Generic filler language reduced actionability.",
+          "Synthesis summary is too short to support action.",
+          "Actionability score 6.00 is below threshold 75."
+        ]
+      },
+      "failureReasons": [
+        "Synthesis verdict is missing.",
+        "Missing at least three prioritized recommendations.",
+        "Recommendations are not fully prioritized.",
+        "Generic filler language reduced actionability.",
+        "Synthesis summary is too short to support action.",
+        "Actionability score 6.00 is below threshold 75."
+      ],
+      "transcriptPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/transcripts/benchmark-gemini-general-debate-1.transcript.json",
+      "debugArtifactPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/debug/gemini-general-debate-1.debug.json"
+    },
+    {
+      "entryId": "gemini-general-debate-2",
+      "adapterId": "general-debate",
+      "providerId": "gemini",
+      "topic": "How should teams balance experimentation and reliability?",
+      "inputTokens": 1740,
+      "outputTokens": 87,
+      "tokenBudgetPassed": true,
+      "actionability": {
+        "rubricVersion": "2026-03-06.v1",
+        "evaluationTier": "baseline",
+        "threshold": 75,
+        "score": 6,
+        "passed": false,
+        "subscores": {
+          "structuralCompleteness": 6,
+          "recommendationSpecificity": 0,
+          "grounding": 12,
+          "nonRedundancy": 18,
+          "prioritizedNextStepUsefulness": 0
+        },
+        "penalties": [
+          {
+            "code": "MISSING_RECOMMENDATIONS",
+            "points": 18,
+            "reason": "Missing at least three prioritized recommendations."
+          },
+          {
+            "code": "GENERIC_FILLER",
+            "points": 12,
+            "reason": "Generic filler language reduced actionability."
+          }
+        ],
+        "failureReasons": [
+          "Synthesis verdict is missing.",
+          "Missing at least three prioritized recommendations.",
+          "Recommendations are not fully prioritized.",
+          "Generic filler language reduced actionability.",
+          "Synthesis summary is too short to support action.",
+          "Actionability score 6.00 is below threshold 75."
+        ]
+      },
+      "failureReasons": [
+        "Synthesis verdict is missing.",
+        "Missing at least three prioritized recommendations.",
+        "Recommendations are not fully prioritized.",
+        "Generic filler language reduced actionability.",
+        "Synthesis summary is too short to support action.",
+        "Actionability score 6.00 is below threshold 75."
+      ],
+      "transcriptPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/transcripts/benchmark-gemini-general-debate-2.transcript.json",
+      "debugArtifactPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/debug/gemini-general-debate-2.debug.json"
+    },
+    {
+      "entryId": "gemini-general-debate-3",
+      "adapterId": "general-debate",
+      "providerId": "gemini",
+      "topic": "What makes creative feedback actionable?",
+      "inputTokens": 1737,
+      "outputTokens": 88,
+      "tokenBudgetPassed": true,
+      "actionability": {
+        "rubricVersion": "2026-03-06.v1",
+        "evaluationTier": "baseline",
+        "threshold": 75,
+        "score": 10,
+        "passed": false,
+        "subscores": {
+          "structuralCompleteness": 6,
+          "recommendationSpecificity": 0,
+          "grounding": 16,
+          "nonRedundancy": 18,
+          "prioritizedNextStepUsefulness": 0
+        },
+        "penalties": [
+          {
+            "code": "MISSING_RECOMMENDATIONS",
+            "points": 18,
+            "reason": "Missing at least three prioritized recommendations."
+          },
+          {
+            "code": "GENERIC_FILLER",
+            "points": 12,
+            "reason": "Generic filler language reduced actionability."
+          }
+        ],
+        "failureReasons": [
+          "Synthesis verdict is missing.",
+          "Missing at least three prioritized recommendations.",
+          "Recommendations are not fully prioritized.",
+          "Generic filler language reduced actionability.",
+          "Synthesis summary is too short to support action.",
+          "Actionability score 10.00 is below threshold 75."
+        ]
+      },
+      "failureReasons": [
+        "Synthesis verdict is missing.",
+        "Missing at least three prioritized recommendations.",
+        "Recommendations are not fully prioritized.",
+        "Generic filler language reduced actionability.",
+        "Synthesis summary is too short to support action.",
+        "Actionability score 10.00 is below threshold 75."
+      ],
+      "transcriptPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/transcripts/benchmark-gemini-general-debate-3.transcript.json",
+      "debugArtifactPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/debug/gemini-general-debate-3.debug.json"
+    },
+    {
+      "entryId": "gemini-creative-writing-4",
+      "adapterId": "creative-writing",
+      "providerId": "gemini",
+      "topic": "Write a story about an AI that becomes self-aware",
+      "inputTokens": 1762,
+      "outputTokens": 90,
+      "tokenBudgetPassed": true,
+      "actionability": {
+        "rubricVersion": "2026-03-06.v1",
+        "evaluationTier": "baseline",
+        "threshold": 75,
+        "score": 10,
+        "passed": false,
+        "subscores": {
+          "structuralCompleteness": 6,
+          "recommendationSpecificity": 0,
+          "grounding": 16,
+          "nonRedundancy": 18,
+          "prioritizedNextStepUsefulness": 0
+        },
+        "penalties": [
+          {
+            "code": "MISSING_RECOMMENDATIONS",
+            "points": 18,
+            "reason": "Missing at least three prioritized recommendations."
+          },
+          {
+            "code": "GENERIC_FILLER",
+            "points": 12,
+            "reason": "Generic filler language reduced actionability."
+          }
+        ],
+        "failureReasons": [
+          "Synthesis verdict is missing.",
+          "Missing at least three prioritized recommendations.",
+          "Recommendations are not fully prioritized.",
+          "Generic filler language reduced actionability.",
+          "Synthesis summary is too short to support action.",
+          "Actionability score 10.00 is below threshold 75."
+        ]
+      },
+      "failureReasons": [
+        "Synthesis verdict is missing.",
+        "Missing at least three prioritized recommendations.",
+        "Recommendations are not fully prioritized.",
+        "Generic filler language reduced actionability.",
+        "Synthesis summary is too short to support action.",
+        "Actionability score 10.00 is below threshold 75."
+      ],
+      "transcriptPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/transcripts/benchmark-gemini-creative-writing-4.transcript.json",
+      "debugArtifactPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/debug/gemini-creative-writing-4.debug.json"
+    },
+    {
+      "entryId": "gemini-creative-writing-5",
+      "adapterId": "creative-writing",
+      "providerId": "gemini",
+      "topic": "What makes a villain more compelling than the hero?",
+      "inputTokens": 1749,
+      "outputTokens": 87,
+      "tokenBudgetPassed": true,
+      "actionability": {
+        "rubricVersion": "2026-03-06.v1",
+        "evaluationTier": "baseline",
+        "threshold": 75,
+        "score": 10,
+        "passed": false,
+        "subscores": {
+          "structuralCompleteness": 6,
+          "recommendationSpecificity": 0,
+          "grounding": 16,
+          "nonRedundancy": 18,
+          "prioritizedNextStepUsefulness": 0
+        },
+        "penalties": [
+          {
+            "code": "MISSING_RECOMMENDATIONS",
+            "points": 18,
+            "reason": "Missing at least three prioritized recommendations."
+          },
+          {
+            "code": "GENERIC_FILLER",
+            "points": 12,
+            "reason": "Generic filler language reduced actionability."
+          }
+        ],
+        "failureReasons": [
+          "Synthesis verdict is missing.",
+          "Missing at least three prioritized recommendations.",
+          "Recommendations are not fully prioritized.",
+          "Generic filler language reduced actionability.",
+          "Synthesis summary is too short to support action.",
+          "Actionability score 10.00 is below threshold 75."
+        ]
+      },
+      "failureReasons": [
+        "Synthesis verdict is missing.",
+        "Missing at least three prioritized recommendations.",
+        "Recommendations are not fully prioritized.",
+        "Generic filler language reduced actionability.",
+        "Synthesis summary is too short to support action.",
+        "Actionability score 10.00 is below threshold 75."
+      ],
+      "transcriptPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/transcripts/benchmark-gemini-creative-writing-5.transcript.json",
+      "debugArtifactPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/debug/gemini-creative-writing-5.debug.json"
+    },
+    {
+      "entryId": "gemini-creative-writing-6",
+      "adapterId": "creative-writing",
+      "providerId": "gemini",
+      "topic": "How does setting shape character in fiction?",
+      "inputTokens": 1750,
+      "outputTokens": 90,
+      "tokenBudgetPassed": true,
+      "actionability": {
+        "rubricVersion": "2026-03-06.v1",
+        "evaluationTier": "baseline",
+        "threshold": 75,
+        "score": 10,
+        "passed": false,
+        "subscores": {
+          "structuralCompleteness": 6,
+          "recommendationSpecificity": 0,
+          "grounding": 16,
+          "nonRedundancy": 18,
+          "prioritizedNextStepUsefulness": 0
+        },
+        "penalties": [
+          {
+            "code": "MISSING_RECOMMENDATIONS",
+            "points": 18,
+            "reason": "Missing at least three prioritized recommendations."
+          },
+          {
+            "code": "GENERIC_FILLER",
+            "points": 12,
+            "reason": "Generic filler language reduced actionability."
+          }
+        ],
+        "failureReasons": [
+          "Synthesis verdict is missing.",
+          "Missing at least three prioritized recommendations.",
+          "Recommendations are not fully prioritized.",
+          "Generic filler language reduced actionability.",
+          "Synthesis summary is too short to support action.",
+          "Actionability score 10.00 is below threshold 75."
+        ]
+      },
+      "failureReasons": [
+        "Synthesis verdict is missing.",
+        "Missing at least three prioritized recommendations.",
+        "Recommendations are not fully prioritized.",
+        "Generic filler language reduced actionability.",
+        "Synthesis summary is too short to support action.",
+        "Actionability score 10.00 is below threshold 75."
+      ],
+      "transcriptPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/transcripts/benchmark-gemini-creative-writing-6.transcript.json",
+      "debugArtifactPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/debug/gemini-creative-writing-6.debug.json"
+    },
+    {
+      "entryId": "gemini-ableton-feedback-7",
+      "adapterId": "ableton-feedback",
+      "providerId": "gemini",
+      "topic": "How should a producer approach mixing a dense arrangement?",
+      "inputTokens": 1818,
+      "outputTokens": 88,
+      "tokenBudgetPassed": true,
+      "actionability": {
+        "rubricVersion": "2026-03-06.v1",
+        "evaluationTier": "baseline",
+        "threshold": 75,
+        "score": 9,
+        "passed": false,
+        "subscores": {
+          "structuralCompleteness": 6,
+          "recommendationSpecificity": 0,
+          "grounding": 15,
+          "nonRedundancy": 18,
+          "prioritizedNextStepUsefulness": 0
+        },
+        "penalties": [
+          {
+            "code": "MISSING_RECOMMENDATIONS",
+            "points": 18,
+            "reason": "Missing at least three prioritized recommendations."
+          },
+          {
+            "code": "GENERIC_FILLER",
+            "points": 12,
+            "reason": "Generic filler language reduced actionability."
+          }
+        ],
+        "failureReasons": [
+          "Synthesis verdict is missing.",
+          "Missing at least three prioritized recommendations.",
+          "Recommendations are not fully prioritized.",
+          "Generic filler language reduced actionability.",
+          "Synthesis summary is too short to support action.",
+          "Actionability score 9.00 is below threshold 75."
+        ]
+      },
+      "failureReasons": [
+        "Synthesis verdict is missing.",
+        "Missing at least three prioritized recommendations.",
+        "Recommendations are not fully prioritized.",
+        "Generic filler language reduced actionability.",
+        "Synthesis summary is too short to support action.",
+        "Actionability score 9.00 is below threshold 75."
+      ],
+      "transcriptPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/transcripts/benchmark-gemini-ableton-feedback-7.transcript.json",
+      "debugArtifactPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/debug/gemini-ableton-feedback-7.debug.json"
+    },
+    {
+      "entryId": "gemini-ableton-feedback-8",
+      "adapterId": "ableton-feedback",
+      "providerId": "gemini",
+      "topic": "What is the role of silence and space in electronic music?",
+      "inputTokens": 1831,
+      "outputTokens": 89,
+      "tokenBudgetPassed": true,
+      "actionability": {
+        "rubricVersion": "2026-03-06.v1",
+        "evaluationTier": "baseline",
+        "threshold": 75,
+        "score": 7.5,
+        "passed": false,
+        "subscores": {
+          "structuralCompleteness": 6,
+          "recommendationSpecificity": 0,
+          "grounding": 13.5,
+          "nonRedundancy": 18,
+          "prioritizedNextStepUsefulness": 0
+        },
+        "penalties": [
+          {
+            "code": "MISSING_RECOMMENDATIONS",
+            "points": 18,
+            "reason": "Missing at least three prioritized recommendations."
+          },
+          {
+            "code": "GENERIC_FILLER",
+            "points": 12,
+            "reason": "Generic filler language reduced actionability."
+          }
+        ],
+        "failureReasons": [
+          "Synthesis verdict is missing.",
+          "Missing at least three prioritized recommendations.",
+          "Recommendations are not fully prioritized.",
+          "Generic filler language reduced actionability.",
+          "Synthesis summary is too short to support action.",
+          "Actionability score 7.50 is below threshold 75."
+        ]
+      },
+      "failureReasons": [
+        "Synthesis verdict is missing.",
+        "Missing at least three prioritized recommendations.",
+        "Recommendations are not fully prioritized.",
+        "Generic filler language reduced actionability.",
+        "Synthesis summary is too short to support action.",
+        "Actionability score 7.50 is below threshold 75."
+      ],
+      "transcriptPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/transcripts/benchmark-gemini-ableton-feedback-8.transcript.json",
+      "debugArtifactPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/debug/gemini-ableton-feedback-8.debug.json"
+    },
+    {
+      "entryId": "gemini-ableton-feedback-9",
+      "adapterId": "ableton-feedback",
+      "providerId": "gemini",
+      "topic": "How do you decide when a track is finished?",
+      "inputTokens": 1830,
+      "outputTokens": 91,
+      "tokenBudgetPassed": true,
+      "actionability": {
+        "rubricVersion": "2026-03-06.v1",
+        "evaluationTier": "baseline",
+        "threshold": 75,
+        "score": 7.5,
+        "passed": false,
+        "subscores": {
+          "structuralCompleteness": 6,
+          "recommendationSpecificity": 0,
+          "grounding": 13.5,
+          "nonRedundancy": 18,
+          "prioritizedNextStepUsefulness": 0
+        },
+        "penalties": [
+          {
+            "code": "MISSING_RECOMMENDATIONS",
+            "points": 18,
+            "reason": "Missing at least three prioritized recommendations."
+          },
+          {
+            "code": "GENERIC_FILLER",
+            "points": 12,
+            "reason": "Generic filler language reduced actionability."
+          }
+        ],
+        "failureReasons": [
+          "Synthesis verdict is missing.",
+          "Missing at least three prioritized recommendations.",
+          "Recommendations are not fully prioritized.",
+          "Generic filler language reduced actionability.",
+          "Synthesis summary is too short to support action.",
+          "Actionability score 7.50 is below threshold 75."
+        ]
+      },
+      "failureReasons": [
+        "Synthesis verdict is missing.",
+        "Missing at least three prioritized recommendations.",
+        "Recommendations are not fully prioritized.",
+        "Generic filler language reduced actionability.",
+        "Synthesis summary is too short to support action.",
+        "Actionability score 7.50 is below threshold 75."
+      ],
+      "transcriptPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/transcripts/benchmark-gemini-ableton-feedback-9.transcript.json",
+      "debugArtifactPath": "/Users/christiansmith/code/projects/multi-agent-framework/benchmarks/post-merge-check/debug/gemini-ableton-feedback-9.debug.json"
+    }
+  ]
+}
