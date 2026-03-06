@@ -1,19 +1,21 @@
 # Multi-Agent Framework
 
-CLI framework for running structured multi-agent discussions, persisting transcripts, and benchmarking whether synthesis output is actually actionable.
+CLI framework for running structured multi-agent discussions, persisting transcripts, and certifying whether the final synthesis is actionable.
 
 ## Purpose
 
-This project orchestrates domain adapters composed of multiple agents, rounds, and synthesis logic. It is designed to answer one practical question: does the final output produce concrete, prioritized next steps rather than generic model prose?
+The framework is built around one operational question: does the synthesis produce concrete, prioritized next steps grounded in the discussion, rather than generic model filler?
 
-The framework now separates:
+Validation is split into two lanes:
 
-- `baseline` validation: deterministic mock-mode health checks and regression coverage
-- `live_certification`: real-provider validation for actionability claims
+- `baseline`: deterministic mock-mode regression coverage
+- `live_certification`: real-provider evaluation used for actionability claims
 
-Mock runs are useful for reproducible testing. They are not treated as proof that the application is actionable.
+Mock success is useful for testing. It is not treated as proof that the system is actionable in production.
 
-## Supported Commands
+## Commands
+
+Core CLI:
 
 ```bash
 bun run start -- list-adapters
@@ -21,7 +23,21 @@ bun run start -- run --adapter-id general-debate --topic "Should teams default t
 bun run start -- benchmark --output-dir ./benchmarks
 ```
 
-Useful dev commands:
+Connector and auth management:
+
+```bash
+bun run start -- auth login --provider gemini --method api-key --use
+bun run start -- auth login --provider kimi --method api-key --use --base-url https://api.moonshot.cn/v1
+bun run start -- auth login --provider openai --method api-key --use
+bun run start -- auth login --provider openai --method chatgpt-oauth
+bun run start -- auth status
+bun run start -- auth certify
+bun run start -- auth logout --connector openai-main
+bun run start -- connector list
+bun run start -- connector use --connector gemini-main
+```
+
+Development gates:
 
 ```bash
 bun run typecheck
@@ -29,104 +45,235 @@ bun test
 bun run build
 ```
 
+## Connector Model
+
+Live execution is connector-first.
+
+- Stored connectors live in `.multi-agent-framework/connectors.json`
+- Interactive credentials are stored in the OS credential store under service name `multi-agent-framework`
+- Environment-backed connectors are discovered ephemerally from exported keys and appear as `gemini-env`, `kimi-env`, and `openai-env`
+- The active connector persists until changed with `connector use` or another `auth login --use`
+- Blocked connectors can be recorded in the catalog for planned-but-not-runnable auth methods; they are visible in `auth status` and `connector list` but are never selected for live execution
+
+Execution resolution order for `run` and `benchmark`:
+
+1. explicit `--connector <id>`
+2. active connector from `.multi-agent-framework/connectors.json`
+3. exactly one env-backed connector
+4. mock fallback when execution mode is `auto`
+
+If multiple live env connectors are present and none is selected, the CLI fails fast and asks you to choose one.
+
+## Execution Modes
+
+- `mock`: always use deterministic mock providers
+- `live`: require a resolved live connector
+- `auto`: use the selected live connector when available, otherwise fall back to mock
+
+`--provider-mode` is still accepted as a backward-compatible alias for `--execution-mode`.
+
 ## Provider Matrix
 
-| Provider | Recognized | Live-capable | Notes |
-| --- | --- | --- | --- |
-| `gemini` | Yes | Yes | Requires `GEMINI_API_KEY` |
-| `kimi` | Yes | Yes | Requires `KIMI_API_KEY`; optional `KIMI_BASE_URL` |
-| `openai` | Yes | No | Explicitly unsupported for live execution in this pass |
-| `claude` | Yes | No | Explicitly unsupported for live execution in this pass |
-| `mock` | Yes | Mock only | Deterministic baseline coverage |
+| Provider | Recognized | Live-capable | Supported auth | Credential sources | Default model | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `gemini` | Yes | Yes | `api-key` | `env`, `keychain` | `gemini-2.5-flash` | Uses `GEMINI_API_KEY` |
+| `kimi` | Yes | Yes | `api-key` | `env`, `keychain` | `moonshot-v1-8k` | Uses `KIMI_API_KEY`; optional `KIMI_BASE_URL` |
+| `openai` | Yes | Yes | declared: `api-key`, `chatgpt-oauth`; implemented: `api-key` | `env`, `keychain` | `gpt-4.1-mini` | Uses `OPENAI_API_KEY` via the OpenAI Responses API; ChatGPT OAuth is blocked pending [issue #1](https://github.com/slittycode/multi-agent-framework/issues/1) |
+| `claude` | Yes | No | none in this pass | none in this pass | n/a | Recognized but unsupported for live execution |
+| `mock` | Yes | Mock only | n/a | n/a | n/a | Baseline regression coverage only |
+
+OpenAI support in this version is API-key runtime authentication. `auth login --provider openai --method chatgpt-oauth` creates a blocked placeholder connector so the missing OAuth path is explicit and cannot be mistaken for a working live connector.
 
 ## Environment
 
-Copy values from `.env.example` into your environment before live runs:
+Copy values from `.env.example` into your shell or local env file before live runs:
 
 - `GEMINI_API_KEY`
 - `KIMI_API_KEY`
 - `KIMI_BASE_URL`
+- `OPENAI_API_KEY`
 - `RUN_LIVE_PROVIDER_TESTS`
 - `RUN_BENCHMARK_TESTS`
 
-The live smoke tests stay skipped unless `RUN_LIVE_PROVIDER_TESTS=1` and the relevant keys are present.
+Optional local/test overrides:
+
+- `MAF_STATE_DIR`
+- `MAF_CREDENTIAL_STORE_BACKEND`
+- `MAF_CREDENTIAL_STORE_FILE`
+
+Use the optional `MAF_*` overrides for tests or headless automation. Normal interactive use should rely on the repo-local connector catalog plus the OS credential store.
+
+## Auth Workflow
+
+Create and select a stored connector:
+
+```bash
+bun run start -- auth login --provider openai --method api-key --connector-id openai-main --use
+```
+
+This will:
+
+- prompt for the API key
+- write connector metadata to `.multi-agent-framework/connectors.json`
+- store the secret in the OS credential store
+- certify the connector immediately unless `--no-certify` is supplied
+
+Check current status:
+
+```bash
+bun run start -- auth status
+```
+
+Recertify the current connector and persist a smoke-test artifact:
+
+```bash
+bun run start -- auth certify --output-dir ./runs/auth
+```
+
+Switch the active connector without re-entering credentials:
+
+```bash
+bun run start -- connector use --connector kimi-main
+```
+
+Record the missing OpenAI OAuth path explicitly without creating a runnable connector:
+
+```bash
+bun run start -- auth login --provider openai --method chatgpt-oauth --connector-id openai-oauth
+```
 
 ## Run Semantics
 
 `run` prints:
 
-- provider mode
+- requested execution mode
+- resolved execution mode
+- selected connector and active connector
 - evaluation tier
-- provider support matrix for the selected adapter
+- provider support matrix
 - streamed messages
 - synthesis output
 - actionability score and rubric breakdown
 
-Built-in adapters enable the quality gate by default, so the persisted transcript metadata includes the actionability rubric result.
+In live or auto mode, the selected connector rewrites every adapter agent to the chosen provider and default model unless you override the model explicitly with `--model`.
+
+Example:
+
+```bash
+bun run start -- run --adapter-id general-debate --topic "Should teams default to async communication?" --execution-mode auto
+```
 
 ## Benchmark Semantics
 
-`benchmark` writes a JSON report with:
+`benchmark` writes a JSON report plus supporting artifacts:
+
+- `v02-benchmark-<timestamp>.json`: top-level report
+- `transcripts/`: transcript JSON per scenario
+- `debug/`: debug artifacts for failed or non-actionable scenarios
+
+Report fields include:
 
 - `evaluationTier`
 - `providerMode`
+- `executionMode`
+- `resolvedExecutionMode`
 - `providerIds`
+- `connectorId`
+- `activeConnectorId`
+- `credentialSource`
+- `certificationScope`
 - `rubricVersion`
 - per-entry actionability subscores
-- failure reasons
-- transcript paths
-- debug artifact paths for failing entries
+- `failureReasons`
+- `transcriptPath`
+- `debugArtifactPath`
 
-Artifacts are written under the chosen output directory:
+By default:
 
-- `transcripts/`: persisted transcript JSON files per benchmark run
-- `debug/`: failure-focused debug JSON artifacts
-- `v02-benchmark-<timestamp>.json`: top-level report
+- `benchmark` in `mock` or mock-resolved `auto` mode stays in `baseline`
+- `benchmark` in live mode certifies only the resolved connector
+- `benchmark --all-connectors` runs the same matrix across every configured live connector
 
-Token budget is tracked separately from actionability:
+Token budget is reported separately from actionability:
 
 - baseline reference: `15357`
 - target budget: `11518`
 
 Reducing tokens does not count as actionability by itself.
 
-## Certification Defaults
+## Actionability Rubric
 
-Live certification requires:
+The quality gate scores:
 
-- both Gemini and Kimi to run the built-in scenario matrix
-- mean actionability score `>= 80`
-- no individual scenario score below `70`
+- structural completeness
+- recommendation specificity
+- grounding to prior messages or citations
+- non-redundancy
+- prioritized next-step usefulness
 
-Baseline mock benchmarking keeps the historical `75` entry threshold for regression tracking, but it is still reported as `baseline`, not certification.
+The evaluator applies hard penalties for:
 
-## Current Limitations
+- generic filler
+- repeated turns
+- synthesis fallback
+- missing recommendations
 
-- `openai` and `claude` are recognized provider IDs but do not have live client implementations here.
-- Live benchmark certification depends on external credentials and provider availability.
-- Retrieval remains optional and defaults to graceful transcript-only behavior when no retriever is configured.
+Default thresholds:
 
-## Validation Matrix
+- baseline entry threshold: `75`
+- live certification mean threshold: `80`
+- live certification minimum per scenario: `70`
 
-- Built-in adapters: `general-debate`, `creative-writing`, `ableton-feedback`
-- Synthetic framework/error fixtures: `synthesis-failure-adapter.ts`, `live-openai-adapter.ts`
+## Built-In Validation Matrix
+
+Built-in adapters:
+
+- `general-debate`
+- `creative-writing`
+- `ableton-feedback`
+
+Fixture adapters used for framework and failure-path validation:
+
+- `tests/fixtures/adapters/synthesis-failure-adapter.ts`
+- `tests/fixtures/adapters/live-openai-adapter.ts`
+- `tests/fixtures/adapters/live-gemini-adapter.ts`
 
 ## Quick Start
 
-Mock baseline run:
+Baseline mock run:
 
 ```bash
-bun run start -- run --adapter-id general-debate --topic "Should teams default to async communication?" --provider-mode mock
+bun run start -- run --adapter-id general-debate --topic "Should teams default to async communication?" --execution-mode mock
 ```
 
-Mock baseline benchmark:
+Connector-backed live run:
 
 ```bash
-bun run start -- benchmark --provider-mode mock --output-dir ./benchmarks
+bun run start -- auth login --provider openai --method api-key --use
+bun run start -- run --adapter-id general-debate --topic "Should teams default to async communication?"
 ```
 
-Live certification benchmark:
+Baseline benchmark:
 
 ```bash
-bun run start -- benchmark --provider-mode live --output-dir ./benchmarks/live
+bun run start -- benchmark --execution-mode mock --output-dir ./benchmarks/baseline
 ```
+
+Single-connector live certification:
+
+```bash
+bun run start -- benchmark --execution-mode live --output-dir ./benchmarks/live
+```
+
+Cross-connector certification:
+
+```bash
+bun run start -- benchmark --execution-mode live --all-connectors --output-dir ./benchmarks/all-connectors
+```
+
+## Current Limitations
+
+- Standalone ChatGPT/Codex OAuth is not implemented here. OpenAI runtime auth is API-key based in this pass.
+- `claude` remains a recognized provider id but is intentionally unsupported for live execution.
+- Live certification still depends on external provider health, quotas, and credentials.
+- The framework can improve confidence across a broad topic matrix, but it cannot honestly guarantee correctness for every possible topic. The practical claim is bounded to the built-in matrix, smoke tests, and explicit failure diagnostics.

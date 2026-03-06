@@ -1,4 +1,7 @@
 import { loadDomainAdapter } from "../../adapters/adapter-loader";
+import { applyConnectorToAdapter } from "../../connectors/adapter-override";
+import { createCredentialStore } from "../../connectors/credential-store";
+import { resolveExecutionContext, type ExecutionMode } from "../../connectors/connector-resolution";
 import {
   getEvaluationTierForProviderMode,
   type ActionabilityEvaluation
@@ -6,8 +9,7 @@ import {
 import { runDiscussion } from "../../core/orchestrator";
 import {
   createProviderRegistryForRun,
-  getAdapterProviderCapabilities,
-  type ProviderMode
+  getAdapterProviderCapabilities
 } from "../../providers/provider-bootstrap";
 import type { DomainAdapter } from "../../types";
 import { TerminalRenderer } from "../output/terminal-renderer";
@@ -25,15 +27,16 @@ interface RunCliOptions {
   citationMode?: "transcript_only" | "optional_web";
   contextPolicyMode?: "full" | "round_plus_recent";
   recentContextCount?: number;
-  providerMode: ProviderMode;
+  executionMode: ExecutionMode;
+  connectorId?: string;
   noPersist: boolean;
 }
 
 function getRunUsage(): string {
   return [
     "Usage:",
-    "  run --adapter-id <id> --topic <text> [--provider-mode mock|live|auto] [--model <model>] [--phase-judge on|off] [--quality-threshold 0-100] [--citation-mode transcript|optional-web] [--context-policy full|round-plus-recent] [--recent-context-count <n>] [--run-id <id>] [--output-dir <dir>] [--format json|jsonl] [--no-persist]",
-    "  run --adapter-file <path> --topic <text> [--provider-mode mock|live|auto] [--model <model>] [--phase-judge on|off] [--quality-threshold 0-100] [--citation-mode transcript|optional-web] [--context-policy full|round-plus-recent] [--recent-context-count <n>] [--run-id <id>] [--output-dir <dir>] [--format json|jsonl] [--no-persist]"
+    "  run --adapter-id <id> --topic <text> [--execution-mode mock|live|auto] [--connector <id>] [--model <model>] [--phase-judge on|off] [--quality-threshold 0-100] [--citation-mode transcript|optional-web] [--context-policy full|round-plus-recent] [--recent-context-count <n>] [--run-id <id>] [--output-dir <dir>] [--format json|jsonl] [--no-persist]",
+    "  run --adapter-file <path> --topic <text> [--execution-mode mock|live|auto] [--connector <id>] [--model <model>] [--phase-judge on|off] [--quality-threshold 0-100] [--citation-mode transcript|optional-web] [--context-policy full|round-plus-recent] [--recent-context-count <n>] [--run-id <id>] [--output-dir <dir>] [--format json|jsonl] [--no-persist]"
   ].join("\n");
 }
 
@@ -63,7 +66,7 @@ function applyModelOverride(adapter: DomainAdapter, model?: string): DomainAdapt
 
 function parseRunOptions(args: string[]): RunCliOptions {
   const options: RunCliOptions = {
-    providerMode: "mock",
+    executionMode: "auto",
     noPersist: false
   };
 
@@ -128,15 +131,25 @@ function parseRunOptions(args: string[]): RunCliOptions {
         index += 1;
         break;
       }
+      case "--execution-mode":
       case "--provider-mode": {
         const value = args[index + 1];
         if (!value) {
-          throw new Error("Missing value for --provider-mode");
+          throw new Error(`Missing value for ${token}`);
         }
         if (value !== "mock" && value !== "live" && value !== "auto") {
-          throw new Error(`Invalid --provider-mode value: ${value}. Expected mock|live|auto.`);
+          throw new Error(`Invalid ${token} value: ${value}. Expected mock|live|auto.`);
         }
-        options.providerMode = value;
+        options.executionMode = value;
+        index += 1;
+        break;
+      }
+      case "--connector": {
+        const value = args[index + 1];
+        if (!value) {
+          throw new Error("Missing value for --connector");
+        }
+        options.connectorId = value;
         index += 1;
         break;
       }
@@ -284,24 +297,41 @@ export async function runCommand(args: string[]): Promise<number> {
   try {
     const adapterSource = options.adapterId ?? options.adapterFile;
     const loadedAdapter = await loadDomainAdapter(adapterSource as string, { cwd: process.cwd() });
-    const adapter = applyModelOverride(loadedAdapter, options.model);
+    const credentialStore = createCredentialStore(process.env as Record<string, string | undefined>);
+    const resolution = await resolveExecutionContext({
+      cwd: process.cwd(),
+      executionMode: options.executionMode,
+      explicitConnectorId: options.connectorId,
+      env: process.env as Record<string, string | undefined>,
+      credentialStore
+    });
+    const resolvedAdapter = resolution.connector
+      ? applyConnectorToAdapter(loadedAdapter, resolution.connector)
+      : loadedAdapter;
+    const adapter = applyModelOverride(resolvedAdapter, options.model);
     const providerSupport = getAdapterProviderCapabilities(adapter);
-    const evaluationTier = getEvaluationTierForProviderMode(options.providerMode);
+    const evaluationTier = getEvaluationTierForProviderMode(resolution.resolvedExecutionMode);
     const runId = options.runId ?? crypto.randomUUID();
 
     renderer.renderHeader({
       runId,
       adapterName: adapter.name,
       topic: options.topic as string,
-      providerMode: options.providerMode,
+      requestedExecutionMode: options.executionMode,
+      resolvedExecutionMode: resolution.resolvedExecutionMode,
       evaluationTier,
-      providerSupport
+      providerSupport,
+      connector: resolution.connector,
+      activeConnectorId: resolution.activeConnectorId
     });
 
     const registry = createProviderRegistryForRun({
       adapter,
-      providerMode: options.providerMode,
-      env: process.env as Record<string, string | undefined>
+      providerMode: resolution.resolvedExecutionMode,
+      env: {
+        ...(process.env as Record<string, string | undefined>),
+        ...resolution.envOverlay
+      }
     });
 
     const runConfig: NonNullable<Parameters<typeof runDiscussion>[0]["config"]> = {
@@ -348,8 +378,12 @@ export async function runCommand(args: string[]): Promise<number> {
       evaluationTier,
       metadata: {
         evaluationTier,
-        providerMode: options.providerMode,
-        providerSupport
+        providerMode: options.executionMode,
+        executionMode: options.executionMode,
+        resolvedExecutionMode: resolution.resolvedExecutionMode,
+        providerSupport,
+        connectorId: resolution.connector?.id,
+        activeConnectorId: resolution.activeConnectorId
       },
       onMessage: (message) => {
         renderer.renderMessage(message);

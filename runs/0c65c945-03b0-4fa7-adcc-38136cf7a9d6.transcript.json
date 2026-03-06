@@ -1,0 +1,39 @@
+{
+  "runId": "0c65c945-03b0-4fa7-adcc-38136cf7a9d6",
+  "adapterId": "fixture-live-openai",
+  "topic": "CLI topic",
+  "startedAt": "2026-03-06T05:04:28.762Z",
+  "status": "failed",
+  "messages": [],
+  "metadata": {
+    "evaluationTier": "live_certification",
+    "providerMode": "auto",
+    "executionMode": "auto",
+    "resolvedExecutionMode": "live",
+    "providerSupport": [
+      {
+        "providerId": "openai",
+        "recognized": true,
+        "liveCapable": true,
+        "requiredEnv": [
+          "OPENAI_API_KEY"
+        ],
+        "declaredAuthMethods": [
+          "api-key",
+          "chatgpt-oauth"
+        ],
+        "supportedAuthMethods": [
+          "api-key"
+        ],
+        "credentialSources": [
+          "env",
+          "keychain"
+        ],
+        "defaultModel": "gpt-4.1-mini"
+      }
+    ],
+    "connectorId": "openai-main",
+    "activeConnectorId": "openai-main"
+  },
+  "endedAt": "2026-03-06T05:04:29.200Z"
+}

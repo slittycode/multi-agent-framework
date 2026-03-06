@@ -1,5 +1,6 @@
 import type { Message, RunContext, SynthesisOutput } from "../../types";
 import type { ActionabilityEvaluation } from "../../core/actionability";
+import type { AvailableConnector } from "../../connectors/types";
 import type { ProviderMode, ProviderSupportDescriptor } from "../../providers/provider-bootstrap";
 
 import {
@@ -26,9 +27,12 @@ export class TerminalRenderer {
     runId: string;
     adapterName: string;
     topic: string;
-    providerMode: ProviderMode;
+    requestedExecutionMode: ProviderMode;
+    resolvedExecutionMode: "mock" | "live";
     evaluationTier: string;
     providerSupport: ProviderSupportDescriptor[];
+    connector?: AvailableConnector;
+    activeConnectorId?: string;
   }): void {
     console.log(formatRunHeader(input));
   }

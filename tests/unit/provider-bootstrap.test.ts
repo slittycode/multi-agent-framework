@@ -8,6 +8,7 @@ import {
 } from "../../src/providers/provider-bootstrap";
 import {
   ProviderCredentialsMissingError,
+  ProviderNotImplementedError,
   ProviderUnsupportedIdError
 } from "../../src/providers/errors";
 import type { DomainAdapter, ProviderId } from "../../src/types";
@@ -86,20 +87,29 @@ describe("provider-bootstrap", () => {
       providerId: "gemini",
       recognized: true,
       liveCapable: true,
-      requiredEnv: ["GEMINI_API_KEY"]
+      requiredEnv: ["GEMINI_API_KEY"],
+      declaredAuthMethods: ["api-key"],
+      supportedAuthMethods: ["api-key"],
+      credentialSources: ["env", "keychain"],
+      defaultModel: "gemini-2.5-flash"
     });
 
     expect(describeProviderSupport("openai")).toMatchObject({
       providerId: "openai",
       recognized: true,
-      liveCapable: false,
-      requiredEnv: ["OPENAI_API_KEY"]
+      liveCapable: true,
+      requiredEnv: ["OPENAI_API_KEY"],
+      declaredAuthMethods: ["api-key", "chatgpt-oauth"],
+      supportedAuthMethods: ["api-key"],
+      credentialSources: ["env", "keychain"],
+      defaultModel: "gpt-4.1-mini"
     });
 
     expect(describeProviderSupport("unknown-provider")).toMatchObject({
       providerId: "unknown-provider",
       recognized: false,
       liveCapable: false,
+      declaredAuthMethods: [],
       requiredEnv: []
     });
   });
@@ -113,7 +123,7 @@ describe("provider-bootstrap", () => {
       "openai"
     ]);
     expect(capabilities.find((capability) => capability.providerId === "openai")).toMatchObject({
-      liveCapable: false
+      liveCapable: true
     });
   });
 
@@ -185,19 +195,40 @@ describe("provider-bootstrap", () => {
     expect(registry.get("kimi").id).toBe("kimi");
   });
 
-  test("live mode fails when provider is not implemented after credentials are supplied", () => {
-    const error = expectProviderBootstrapError("live", "openai", { OPENAI_API_KEY: "test-key" });
-    expect(error.message).toContain("PROVIDER_NOT_IMPLEMENTED");
+  test("live mode registers openai when credentials are present", () => {
+    const registry = createProviderRegistryForRun({
+      adapter: createAdapter(["openai"]),
+      providerMode: "live",
+      env: { OPENAI_API_KEY: "test-key" }
+    });
+
+    expect(registry.list()).toEqual(["openai"]);
+    expect(registry.get("openai").id).toBe("openai");
   });
 
-  test("auto mode fails when provider is not implemented after credentials are supplied", () => {
-    const error = expectProviderBootstrapError("auto", "openai", { OPENAI_API_KEY: "test-key" });
-    expect(error.message).toContain("PROVIDER_NOT_IMPLEMENTED");
+  test("auto mode registers openai when credentials are present", () => {
+    const registry = createProviderRegistryForRun({
+      adapter: createAdapter(["openai"]),
+      providerMode: "auto",
+      env: { OPENAI_API_KEY: "test-key" }
+    });
+
+    expect(registry.list()).toEqual(["openai"]);
+    expect(registry.get("openai").id).toBe("openai");
   });
 
   test("live mode rejects unsupported provider ids", () => {
     const error = expectProviderBootstrapError("live", "unknown-provider", {});
     expect(error).toBeInstanceOf(ProviderUnsupportedIdError);
     expect(error.message).toContain("PROVIDER_UNSUPPORTED_ID");
+  });
+
+  test("live mode rejects recognized but unsupported claude requests", () => {
+    const error = expectProviderBootstrapError("live", "claude", {
+      ANTHROPIC_API_KEY: "test-key"
+    });
+
+    expect(error).toBeInstanceOf(ProviderNotImplementedError);
+    expect(error.message).toContain("claude");
   });
 });

@@ -5,6 +5,7 @@ node_modules
 out
 dist
 .worktrees/
+.multi-agent-framework/
 *.tgz
 
 # code coverage

@@ -2,7 +2,14 @@ import type { DomainAdapter } from "../types";
 import type { ProviderId } from "../types/provider";
 import { GeminiProviderClient } from "./clients/gemini";
 import { KimiProviderClient } from "./clients/kimi";
+import { OpenAIProviderClient } from "./clients/openai";
 import { MockProvider } from "./mock-provider";
+import {
+  describeProviderSupport,
+  isProviderImplemented,
+  listLiveCapableProviderIds,
+  type ProviderSupportDescriptor
+} from "./provider-support";
 import {
   ProviderCredentialsMissingError,
   ProviderNotImplementedError,
@@ -12,13 +19,7 @@ import {
 import { ProviderRegistry } from "./provider-registry";
 
 export type ProviderMode = "mock" | "live" | "auto";
-
-export interface ProviderSupportDescriptor {
-  providerId: ProviderId;
-  recognized: boolean;
-  liveCapable: boolean;
-  requiredEnv: string[];
-}
+export { describeProviderSupport, type ProviderSupportDescriptor } from "./provider-support";
 
 export interface CreateProviderRegistryForRunInput {
   adapter: DomainAdapter;
@@ -30,9 +31,11 @@ interface CredentialRequirement {
   requiredEnv: string[];
 }
 
-const LIVE_PROVIDER_IDS = new Set<ProviderId>(["gemini", "kimi", "openai", "claude"]);
-const IMPLEMENTED_LIVE_PROVIDER_IDS = new Set<ProviderId>(["gemini", "kimi"]);
-export const LIVE_CERTIFICATION_PROVIDER_IDS = ["gemini", "kimi"] as const;
+const LIVE_PROVIDER_IDS = new Set<ProviderId>([
+  ...listLiveCapableProviderIds(),
+  "claude"
+]);
+export const LIVE_CERTIFICATION_PROVIDER_IDS = listLiveCapableProviderIds();
 
 export function collectRequiredProviderIds(adapter: DomainAdapter): ProviderId[] {
   const required = new Set<ProviderId>();
@@ -48,35 +51,8 @@ export function collectRequiredProviderIds(adapter: DomainAdapter): ProviderId[]
 }
 
 export function getCredentialRequirement(providerId: ProviderId): CredentialRequirement | null {
-  switch (providerId) {
-    case "mock":
-      return null;
-    case "gemini":
-      return { requiredEnv: ["GEMINI_API_KEY"] };
-    case "kimi":
-      return { requiredEnv: ["KIMI_API_KEY"] };
-    case "openai":
-      return { requiredEnv: ["OPENAI_API_KEY"] };
-    case "claude":
-      return { requiredEnv: ["ANTHROPIC_API_KEY"] };
-    default:
-      return null;
-  }
-}
-
-export function isProviderImplemented(providerId: ProviderId): boolean {
-  return IMPLEMENTED_LIVE_PROVIDER_IDS.has(providerId);
-}
-
-export function describeProviderSupport(providerId: ProviderId): ProviderSupportDescriptor {
-  const requirement = getCredentialRequirement(providerId);
-
-  return {
-    providerId,
-    recognized: providerId === "mock" || LIVE_PROVIDER_IDS.has(providerId),
-    liveCapable: isProviderImplemented(providerId),
-    requiredEnv: requirement?.requiredEnv ?? []
-  };
+  const support = describeProviderSupport(providerId);
+  return support.requiredEnv.length > 0 ? { requiredEnv: support.requiredEnv } : null;
 }
 
 export function getAdapterProviderCapabilities(adapter: DomainAdapter): ProviderSupportDescriptor[] {
@@ -84,7 +60,7 @@ export function getAdapterProviderCapabilities(adapter: DomainAdapter): Provider
 }
 
 function assertSupportedLiveProvider(providerId: ProviderId): void {
-  if (!LIVE_PROVIDER_IDS.has(providerId)) {
+  if (providerId === "mock" || !LIVE_PROVIDER_IDS.has(providerId)) {
     throw new ProviderUnsupportedIdError(providerId);
   }
 }
@@ -116,7 +92,7 @@ function createMockRegistry(adapter: DomainAdapter): ProviderRegistry {
   return registry;
 }
 
-function createLiveProviderClient(
+export function createLiveProviderClient(
   providerId: ProviderId,
   env: Record<string, string | undefined>
 ) {
@@ -127,6 +103,10 @@ function createLiveProviderClient(
       return new KimiProviderClient({
         apiKey: env.KIMI_API_KEY,
         baseURL: env.KIMI_BASE_URL
+      });
+    case "openai":
+      return new OpenAIProviderClient({
+        apiKey: env.OPENAI_API_KEY
       });
     default:
       throw new ProviderNotImplementedError(providerId);

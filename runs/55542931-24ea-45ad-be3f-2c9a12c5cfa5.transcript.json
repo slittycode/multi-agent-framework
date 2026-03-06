@@ -1,0 +1,102 @@
+{
+  "runId": "55542931-24ea-45ad-be3f-2c9a12c5cfa5",
+  "adapterId": "fixture-live-gemini",
+  "topic": "CLI topic",
+  "startedAt": "2026-03-06T02:51:51.793Z",
+  "status": "completed",
+  "messages": [
+    {
+      "id": "aa5cb101-08ba-4d26-9094-af057c89454b",
+      "runId": "55542931-24ea-45ad-be3f-2c9a12c5cfa5",
+      "roundId": "round-1",
+      "phaseId": "opening",
+      "turnIndex": 1,
+      "timestamp": "2026-03-06T02:51:51.794Z",
+      "from": "speaker",
+      "to": "all",
+      "kind": "agent_turn",
+      "content": "[mock:speaker] I partially agree, but the trade-offs need to be made explicit. [sig:4154845a]",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-02b7825f",
+      "usage": {
+        "inputTokens": 98,
+        "outputTokens": 13,
+        "latencyMs": 0
+      }
+    },
+    {
+      "id": "eac1a213-8116-4eae-bcd7-fd8710620352",
+      "runId": "55542931-24ea-45ad-be3f-2c9a12c5cfa5",
+      "roundId": "round-1",
+      "phaseId": "opening",
+      "turnIndex": 2,
+      "timestamp": "2026-03-06T02:51:51.795Z",
+      "from": "synth",
+      "to": "all",
+      "kind": "agent_turn",
+      "content": "[mock:synth] I challenge this claim because key assumptions are still unproven. [sig:6f246781]",
+      "respondingToMessageId": "aa5cb101-08ba-4d26-9094-af057c89454b",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-0fe753eb",
+      "usage": {
+        "inputTokens": 152,
+        "outputTokens": 12,
+        "latencyMs": 0
+      }
+    },
+    {
+      "id": "479d2100-3dd9-4331-806f-afd9b674cd4a",
+      "runId": "55542931-24ea-45ad-be3f-2c9a12c5cfa5",
+      "roundId": "round-1",
+      "phaseId": "synthesis",
+      "turnIndex": 3,
+      "timestamp": "2026-03-06T02:51:51.795Z",
+      "from": "synth",
+      "to": "all",
+      "kind": "synthesis",
+      "content": "[mock:synth] I support this position and can back it with concrete examples. [sig:709c4202]",
+      "respondingToMessageId": "eac1a213-8116-4eae-bcd7-fd8710620352",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-e43e041d",
+      "usage": {
+        "inputTokens": 207,
+        "outputTokens": 13,
+        "latencyMs": 0
+      }
+    }
+  ],
+  "metadata": {
+    "evaluationTier": "baseline",
+    "providerMode": "auto",
+    "executionMode": "auto",
+    "resolvedExecutionMode": "mock",
+    "providerSupport": [
+      {
+        "providerId": "gemini",
+        "recognized": true,
+        "liveCapable": true,
+        "requiredEnv": [
+          "GEMINI_API_KEY"
+        ],
+        "supportedAuthMethods": [
+          "api-key"
+        ],
+        "credentialSources": [
+          "env",
+          "keychain"
+        ],
+        "defaultModel": "gemini-2.5-flash"
+      }
+    ]
+  },
+  "synthesis": {
+    "agentId": "synth",
+    "messageId": "479d2100-3dd9-4331-806f-afd9b674cd4a",
+    "summary": "[mock:synth] I support this position and can back it with concrete examples. [sig:709c4202]",
+    "raw": "[mock:synth] I support this position and can back it with concrete examples. [sig:709c4202]"
+  },
+  "endedAt": "2026-03-06T02:51:51.795Z"
+}

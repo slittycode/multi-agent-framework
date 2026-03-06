@@ -9,9 +9,21 @@ function projectRoot(): string {
 
 function runCli(
   args: string[],
-  envOverrides: Record<string, string | undefined> = {}
+  envOverrides: Record<string, string | undefined> = {},
+  input = ""
 ): { exitCode: number; stdout: string; stderr: string } {
   const env = { ...process.env };
+  for (const name of [
+    "GEMINI_API_KEY",
+    "KIMI_API_KEY",
+    "KIMI_BASE_URL",
+    "OPENAI_API_KEY",
+    "MAF_STATE_DIR",
+    "MAF_CREDENTIAL_STORE_BACKEND",
+    "MAF_CREDENTIAL_STORE_FILE"
+  ]) {
+    delete env[name];
+  }
   for (const [name, value] of Object.entries(envOverrides)) {
     if (value === undefined) {
       delete env[name];
@@ -24,6 +36,7 @@ function runCli(
     cmd: [process.execPath, "run", "src/cli/main.ts", ...args],
     cwd: projectRoot(),
     env,
+    stdin: input ? new Response(input) : "ignore",
     stdout: "pipe",
     stderr: "pipe"
   });
@@ -53,7 +66,8 @@ describe("integration/cli-run", () => {
       ]);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("Provider Mode: mock");
+      expect(result.stdout).toContain("Execution Mode: auto");
+      expect(result.stdout).toContain("Resolved Execution Mode: mock");
       expect(result.stdout).toContain("Evaluation Tier: baseline");
       expect(result.stdout).toContain("=== Synthesis ===");
       expect(result.stdout).toContain("Summary:");
@@ -271,7 +285,7 @@ describe("integration/cli-run", () => {
     expect(result.stderr).toContain("Invalid --quality-threshold value");
   });
 
-  test("fails in live mode when credentials are missing for a known provider", () => {
+  test("fails in live mode when no live connector is configured", () => {
     const adapterFile = resolve(projectRoot(), "tests/fixtures/adapters/live-gemini-adapter.ts");
     const result = runCli(
       [
@@ -287,11 +301,10 @@ describe("integration/cli-run", () => {
     );
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("PROVIDER_CREDENTIALS_MISSING");
-    expect(result.stderr).toContain("GEMINI_API_KEY");
+    expect(result.stderr).toContain("No live connector is configured");
   });
 
-  test("fails in live mode when provider is not implemented after credentials are supplied", () => {
+  test("fails in live mode when connector credentials are rejected by the provider", () => {
     const adapterFile = resolve(projectRoot(), "tests/fixtures/adapters/live-openai-adapter.ts");
     const result = runCli(
       [
@@ -309,10 +322,10 @@ describe("integration/cli-run", () => {
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toContain("Provider Support:");
     expect(result.stdout).toContain("openai");
-    expect(result.stderr).toContain("PROVIDER_NOT_IMPLEMENTED");
+    expect(result.stderr).toContain("PROVIDER_AUTH_FAILED");
   });
 
-  test("fails in auto mode with missing credentials for known provider", () => {
+  test("falls back to mock in auto mode when no live connector is configured", () => {
     const adapterFile = resolve(projectRoot(), "tests/fixtures/adapters/live-gemini-adapter.ts");
     const result = runCli(
       [
@@ -327,11 +340,12 @@ describe("integration/cli-run", () => {
       { GEMINI_API_KEY: undefined }
     );
 
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("PROVIDER_CREDENTIALS_MISSING");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Resolved Execution Mode: mock");
+    expect(result.stdout).toContain("Evaluation Tier: baseline");
   });
 
-  test("fails in auto mode when provider is not implemented after credentials are supplied", () => {
+  test("uses the env connector in auto mode and surfaces auth failure when credentials are rejected", () => {
     const adapterFile = resolve(projectRoot(), "tests/fixtures/adapters/live-openai-adapter.ts");
     const result = runCli(
       [
@@ -347,7 +361,168 @@ describe("integration/cli-run", () => {
     );
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("PROVIDER_NOT_IMPLEMENTED");
+    expect(result.stdout).toContain("Resolved Execution Mode: live");
+    expect(result.stderr).toContain("PROVIDER_AUTH_FAILED");
+  });
+
+  test("uses the active stored connector in auto mode until changed", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "maf-cli-active-connector-"));
+    const credentialFile = join(stateDir, "credentials.json");
+    const adapterFile = resolve(projectRoot(), "tests/fixtures/adapters/live-openai-adapter.ts");
+
+    try {
+      const loginResult = runCli(
+        [
+          "auth",
+          "login",
+          "--provider",
+          "openai",
+          "--method",
+          "api-key",
+          "--connector-id",
+          "openai-main",
+          "--use",
+          "--no-certify"
+        ],
+        {
+          MAF_STATE_DIR: stateDir,
+          MAF_CREDENTIAL_STORE_BACKEND: "file",
+          MAF_CREDENTIAL_STORE_FILE: credentialFile
+        },
+        "sk-test-openai\n"
+      );
+
+      expect(loginResult.exitCode).toBe(0);
+
+      const result = runCli(
+        ["run", "--adapter-file", adapterFile, "--topic", "CLI topic"],
+        {
+          MAF_STATE_DIR: stateDir,
+          MAF_CREDENTIAL_STORE_BACKEND: "file",
+          MAF_CREDENTIAL_STORE_FILE: credentialFile
+        }
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain("Execution Mode: auto");
+      expect(result.stdout).toContain("Resolved Execution Mode: live");
+      expect(result.stdout).toContain("Selected Connector: openai-main (openai/keychain)");
+      expect(result.stdout).toContain("Active Connector: openai-main");
+      expect(result.stderr).toContain("PROVIDER_AUTH_FAILED");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("ignores a blocked active connector in auto mode and falls back to mock", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "maf-cli-blocked-active-"));
+    const outputDir = await mkdtemp(join(tmpdir(), "maf-cli-blocked-active-output-"));
+
+    try {
+      await Bun.write(
+        join(stateDir, "connectors.json"),
+        `${JSON.stringify(
+          {
+            schemaVersion: 1,
+            activeConnectorId: "openai-oauth",
+            connectors: [
+              {
+                id: "openai-oauth",
+                providerId: "openai",
+                authMethod: "chatgpt-oauth",
+                defaultModel: "gpt-4.1-mini",
+                credentialSource: "keychain",
+                credentialRef: "openai-oauth",
+                lastCertificationStatus: "blocked",
+                runtimeStatus: "blocked",
+                runtimeStatusReason: "oauth_not_implemented",
+                trackedIssueUrl: "https://github.com/slittycode/multi-agent-framework/issues/1"
+              }
+            ]
+          },
+          null,
+          2
+        )}\n`
+      );
+
+      const result = runCli(
+        [
+          "run",
+          "--adapter-id",
+          "general-debate",
+          "--topic",
+          "CLI topic",
+          "--output-dir",
+          outputDir
+        ],
+        {
+          MAF_STATE_DIR: stateDir
+        }
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Execution Mode: auto");
+      expect(result.stdout).toContain("Resolved Execution Mode: mock");
+      expect(result.stdout).toContain("Active Connector: openai-oauth");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  test("fails when a blocked connector is selected explicitly", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "maf-cli-blocked-explicit-"));
+    const adapterFile = resolve(projectRoot(), "tests/fixtures/adapters/live-openai-adapter.ts");
+
+    try {
+      await Bun.write(
+        join(stateDir, "connectors.json"),
+        `${JSON.stringify(
+          {
+            schemaVersion: 1,
+            connectors: [
+              {
+                id: "openai-oauth",
+                providerId: "openai",
+                authMethod: "chatgpt-oauth",
+                defaultModel: "gpt-4.1-mini",
+                credentialSource: "keychain",
+                credentialRef: "openai-oauth",
+                lastCertificationStatus: "blocked",
+                runtimeStatus: "blocked",
+                runtimeStatusReason: "oauth_not_implemented",
+                trackedIssueUrl: "https://github.com/slittycode/multi-agent-framework/issues/1"
+              }
+            ]
+          },
+          null,
+          2
+        )}\n`
+      );
+
+      const result = runCli(
+        [
+          "run",
+          "--adapter-file",
+          adapterFile,
+          "--topic",
+          "CLI topic",
+          "--execution-mode",
+          "live",
+          "--connector",
+          "openai-oauth"
+        ],
+        {
+          MAF_STATE_DIR: stateDir
+        }
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("oauth_not_implemented");
+      expect(result.stderr).toContain("issues/1");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
   });
 
   test("prints synthesis unavailable notice on graceful synthesis fallback", async () => {
@@ -399,11 +574,17 @@ describe("integration/cli-run", () => {
       const report = JSON.parse(reportRaw) as {
         evaluationTier: string;
         providerMode: string;
+        executionMode: string;
+        resolvedExecutionMode: string;
+        certificationScope: string;
+        activeConnectorId?: string;
         providerIds: string[];
         rubricVersion: string;
         entries: Array<{
           adapterId: string;
           topic: string;
+          connectorId?: string;
+          debugArtifactPath?: string;
           actionability: {
             score: number;
             passed: boolean;
@@ -415,11 +596,17 @@ describe("integration/cli-run", () => {
       };
 
       expect(report.evaluationTier).toBe("baseline");
-      expect(report.providerMode).toBe("mock");
+      expect(report.providerMode).toBe("auto");
+      expect(report.executionMode).toBe("auto");
+      expect(report.resolvedExecutionMode).toBe("mock");
+      expect(report.certificationScope).toBe("baseline");
+      expect(report.activeConnectorId).toBeUndefined();
       expect(report.providerIds).toContain("gemini");
       expect(report.rubricVersion).toEqual(expect.any(String));
       expect(report.entries).toHaveLength(9);
       expect(report.entries.every((entry) => entry.transcriptPath)).toBe(true);
+      expect(report.entries.every((entry) => entry.connectorId === undefined)).toBe(true);
+      expect(report.entries.some((entry) => entry.debugArtifactPath)).toBe(true);
       expect(report.entries.some((entry) => entry.actionability.passed === false)).toBe(true);
       expect(report.entries.some((entry) => entry.failureReasons.length > 0)).toBe(true);
 
@@ -435,5 +622,86 @@ describe("integration/cli-run", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("Invalid --provider-mode value: invalid. Expected mock|live|auto.");
+  });
+
+  test("benchmark command accepts --all-connectors with subsequent flags", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "maf-benchmark-all-connectors-"));
+
+    try {
+      const result = runCli([
+        "benchmark",
+        "--execution-mode",
+        "mock",
+        "--all-connectors",
+        "--output-dir",
+        outputDir
+      ]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain("Benchmark Summary");
+
+      const files = await readdir(outputDir);
+      expect(files.some((name) => /^v02-benchmark-\d+\.json$/.test(name))).toBe(true);
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  test("benchmark ignores a blocked active connector in auto mode and stays baseline", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "maf-benchmark-blocked-active-"));
+    const outputDir = await mkdtemp(join(tmpdir(), "maf-benchmark-blocked-active-output-"));
+
+    try {
+      await Bun.write(
+        join(stateDir, "connectors.json"),
+        `${JSON.stringify(
+          {
+            schemaVersion: 1,
+            activeConnectorId: "openai-oauth",
+            connectors: [
+              {
+                id: "openai-oauth",
+                providerId: "openai",
+                authMethod: "chatgpt-oauth",
+                defaultModel: "gpt-4.1-mini",
+                credentialSource: "keychain",
+                credentialRef: "openai-oauth",
+                lastCertificationStatus: "blocked",
+                runtimeStatus: "blocked",
+                runtimeStatusReason: "oauth_not_implemented",
+                trackedIssueUrl: "https://github.com/slittycode/multi-agent-framework/issues/1"
+              }
+            ]
+          },
+          null,
+          2
+        )}\n`
+      );
+
+      const result = runCli(["benchmark", "--output-dir", outputDir], {
+        MAF_STATE_DIR: stateDir
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain("Evaluation Tier: baseline");
+
+      const files = await readdir(outputDir);
+      const reportName = files.find((name) => /^v02-benchmark-\d+\.json$/.test(name));
+      expect(reportName).toBeDefined();
+
+      const reportRaw = await readFile(join(outputDir, reportName as string), "utf8");
+      const report = JSON.parse(reportRaw) as {
+        resolvedExecutionMode: string;
+        certificationScope: string;
+        activeConnectorId?: string;
+      };
+
+      expect(report.resolvedExecutionMode).toBe("mock");
+      expect(report.certificationScope).toBe("baseline");
+      expect(report.activeConnectorId).toBe("openai-oauth");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+      await rm(outputDir, { recursive: true, force: true });
+    }
   });
 });

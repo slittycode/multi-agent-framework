@@ -2,6 +2,15 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { loadDomainAdapter } from "../../adapters/adapter-loader";
+import { applyConnectorToAdapter } from "../../connectors/adapter-override";
+import { createCredentialStore } from "../../connectors/credential-store";
+import {
+  listAvailableConnectors,
+  resolveConnectorById,
+  resolveExecutionContext,
+  type ExecutionMode
+} from "../../connectors/connector-resolution";
+import type { AvailableConnector } from "../../connectors/types";
 import {
   ACTIONABILITY_RUBRIC_VERSION,
   DEFAULT_BASELINE_ACTIONABILITY_THRESHOLD,
@@ -13,21 +22,26 @@ import {
 } from "../../core/actionability";
 import { runDiscussion } from "../../core/orchestrator";
 import {
-  LIVE_CERTIFICATION_PROVIDER_IDS,
   createProviderRegistryForRun,
-  describeProviderSupport,
   type ProviderMode
 } from "../../providers/provider-bootstrap";
-import type { DomainAdapter, Transcript } from "../../types";
+import type { Transcript } from "../../types";
 
 interface BenchmarkCliOptions {
-  providerMode: ProviderMode;
+  executionMode: ExecutionMode;
+  connectorId?: string;
+  allConnectors: boolean;
   outputDir: string;
 }
 
 interface BenchmarkProviderProfile {
+  connector?: AvailableConnector;
+  connectorId?: string;
   providerId: string;
   label: string;
+  credentialSource?: string;
+  envOverlay: Record<string, string>;
+  resolvedExecutionMode: "mock" | "live";
 }
 
 interface BenchmarkDebugArtifact {
@@ -35,6 +49,12 @@ interface BenchmarkDebugArtifact {
   entryId: string;
   evaluationTier: ActionabilityEvaluationTier;
   providerMode: ProviderMode;
+  executionMode: ExecutionMode;
+  resolvedExecutionMode: "mock" | "live";
+  connectorId?: string;
+  credentialSource?: string;
+  certificationScope: "baseline" | "single_connector" | "all_connectors";
+  activeConnectorId?: string;
   adapterId: string;
   providerId: string;
   topic: string;
@@ -51,6 +71,8 @@ interface BenchmarkReportEntry {
   entryId: string;
   adapterId: string;
   providerId: string;
+  connectorId?: string;
+  credentialSource?: string;
   topic: string;
   inputTokens: number;
   outputTokens: number;
@@ -66,6 +88,10 @@ interface BenchmarkReport {
   generatedAt: string;
   evaluationTier: ActionabilityEvaluationTier;
   providerMode: ProviderMode;
+  executionMode: ExecutionMode;
+  resolvedExecutionMode: "mock" | "live";
+  certificationScope: "baseline" | "single_connector" | "all_connectors";
+  activeConnectorId?: string;
   providerIds: string[];
   rubricVersion: string;
   baselineInputTokens: number;
@@ -81,10 +107,6 @@ const BASELINE_INPUT_TOKENS = 15357;
 const TARGET_INPUT_TOKENS = 11518;
 const ENTRY_TIMEOUT_MS = 3 * 60 * 1000;
 const BUILTIN_ADAPTER_IDS = ["general-debate", "creative-writing", "ableton-feedback"] as const;
-const DEFAULT_MODEL_BY_PROVIDER = {
-  gemini: "gemini-2.5-flash",
-  kimi: "moonshot-v1-8k"
-} as const;
 
 type BuiltinAdapterId = (typeof BUILTIN_ADAPTER_IDS)[number];
 
@@ -153,13 +175,14 @@ function getStatusLabel(entry: BenchmarkReportEntry): string {
 function getBenchmarkUsage(): string {
   return [
     "Usage:",
-    "  benchmark [--provider-mode mock|live|auto] [--output-dir <dir>]"
+    "  benchmark [--execution-mode mock|live|auto] [--connector <id>] [--all-connectors] [--output-dir <dir>]"
   ].join("\n");
 }
 
 function parseBenchmarkOptions(args: string[]): BenchmarkCliOptions {
   const options: BenchmarkCliOptions = {
-    providerMode: "mock",
+    executionMode: "auto",
+    allConnectors: false,
     outputDir: "./benchmarks"
   };
 
@@ -167,16 +190,30 @@ function parseBenchmarkOptions(args: string[]): BenchmarkCliOptions {
     const token = args[index];
 
     switch (token) {
+      case "--execution-mode":
       case "--provider-mode": {
         const value = args[index + 1];
         if (!value) {
-          throw new Error("Missing value for --provider-mode");
+          throw new Error(`Missing value for ${token}`);
         }
         if (value !== "mock" && value !== "live" && value !== "auto") {
-          throw new Error(`Invalid --provider-mode value: ${value}. Expected mock|live|auto.`);
+          throw new Error(`Invalid ${token} value: ${value}. Expected mock|live|auto.`);
         }
-        options.providerMode = value;
+        options.executionMode = value;
         index += 1;
+        break;
+      }
+      case "--connector": {
+        const value = args[index + 1];
+        if (!value) {
+          throw new Error("Missing value for --connector");
+        }
+        options.connectorId = value;
+        index += 1;
+        break;
+      }
+      case "--all-connectors": {
+        options.allConnectors = true;
         break;
       }
       case "--output-dir": {
@@ -310,31 +347,6 @@ function getActionabilityThreshold(evaluationTier: ActionabilityEvaluationTier):
     : LIVE_CERTIFICATION_ENTRY_THRESHOLD;
 }
 
-function applyProviderProfile(adapter: DomainAdapter, providerId: string): DomainAdapter {
-  const defaultModel = DEFAULT_MODEL_BY_PROVIDER[providerId as keyof typeof DEFAULT_MODEL_BY_PROVIDER];
-
-  return {
-    ...adapter,
-    agents: adapter.agents.map((agent) => {
-      if (!agent.llm) {
-        return agent;
-      }
-
-      return {
-        ...agent,
-        llm: {
-          ...agent.llm,
-          provider: providerId,
-          model:
-            providerId === agent.llm.provider
-              ? agent.llm.model
-              : defaultModel ?? agent.llm.model
-        }
-      };
-    })
-  };
-}
-
 async function fileExists(path: string): Promise<boolean> {
   try {
     await access(path);
@@ -394,35 +406,105 @@ async function persistDebugArtifact(
   return path;
 }
 
-function buildBenchmarkProfiles(
-  providerMode: ProviderMode,
+async function buildBenchmarkProfiles(
+  options: BenchmarkCliOptions,
   env: Record<string, string | undefined>
-): BenchmarkProviderProfile[] {
-  if (providerMode === "mock") {
-    return [{ providerId: "gemini", label: "declared-providers" }];
+): Promise<{
+  activeConnectorId?: string;
+  certificationScope: "baseline" | "single_connector" | "all_connectors";
+  resolvedExecutionMode: "mock" | "live";
+  profiles: BenchmarkProviderProfile[];
+}> {
+  const credentialStore = createCredentialStore(env);
+
+  if (options.executionMode === "mock") {
+    return {
+      certificationScope: "baseline",
+      resolvedExecutionMode: "mock",
+      profiles: [
+        {
+          providerId: "gemini",
+          label: "declared-providers",
+          envOverlay: {},
+          resolvedExecutionMode: "mock"
+        }
+      ]
+    };
   }
 
-  for (const providerId of LIVE_CERTIFICATION_PROVIDER_IDS) {
-    const support = describeProviderSupport(providerId);
-    const missing = support.requiredEnv.filter((name) => {
-      const value = env[name];
-      return typeof value !== "string" || value.trim() === "";
-    });
+  if (options.allConnectors) {
+    const available = await listAvailableConnectors({ cwd: process.cwd(), env });
+    if (available.connectors.length === 0) {
+      throw new Error("No live connectors are available for --all-connectors.");
+    }
 
-    if (!support.liveCapable) {
-      throw new Error(`Live certification requires ${providerId} to be live-capable.`);
+    const profiles: BenchmarkProviderProfile[] = [];
+    for (const connector of available.connectors) {
+      const resolved = await resolveConnectorById({
+        connectorId: connector.id,
+        cwd: process.cwd(),
+        env,
+        credentialStore
+      });
+      profiles.push({
+        connector: resolved.connector,
+        connectorId: resolved.connector.id,
+        providerId: resolved.connector.providerId,
+        label: resolved.connector.id,
+        credentialSource: resolved.connector.credentialSource,
+        envOverlay: resolved.envOverlay,
+        resolvedExecutionMode: "live"
+      });
     }
-    if (missing.length > 0) {
-      throw new Error(
-        `Live certification requires credentials for ${providerId}: ${missing.join(", ")}.`
-      );
-    }
+
+    return {
+      activeConnectorId: available.activeConnectorId,
+      certificationScope: "all_connectors",
+      resolvedExecutionMode: "live",
+      profiles
+    };
   }
 
-  return LIVE_CERTIFICATION_PROVIDER_IDS.map((providerId) => ({
-    providerId,
-    label: providerId
-  }));
+  const resolution = await resolveExecutionContext({
+    cwd: process.cwd(),
+    executionMode: options.executionMode,
+    explicitConnectorId: options.connectorId,
+    env,
+    credentialStore
+  });
+
+  if (resolution.resolvedExecutionMode === "mock") {
+    return {
+      activeConnectorId: resolution.activeConnectorId,
+      certificationScope: "baseline",
+      resolvedExecutionMode: "mock",
+      profiles: [
+        {
+          providerId: "gemini",
+          label: "declared-providers",
+          envOverlay: {},
+          resolvedExecutionMode: "mock"
+        }
+      ]
+    };
+  }
+
+  return {
+    activeConnectorId: resolution.activeConnectorId,
+    certificationScope: "single_connector",
+    resolvedExecutionMode: "live",
+    profiles: [
+      {
+        connector: resolution.connector,
+        connectorId: resolution.connector?.id,
+        providerId: resolution.connector?.providerId as string,
+        label: resolution.connector?.id as string,
+        credentialSource: resolution.connector?.credentialSource,
+        envOverlay: resolution.envOverlay,
+        resolvedExecutionMode: "live"
+      }
+    ]
+  };
 }
 
 function getReportPassStatus(report: BenchmarkReport): boolean {
@@ -435,8 +517,7 @@ function getReportPassStatus(report: BenchmarkReport): boolean {
   }
 
   return (
-    report.providerIds.length === LIVE_CERTIFICATION_PROVIDER_IDS.length &&
-    LIVE_CERTIFICATION_PROVIDER_IDS.every((providerId) => report.providerIds.includes(providerId)) &&
+    report.providerIds.length > 0 &&
     report.meanActionabilityScore >= LIVE_CERTIFICATION_MEAN_THRESHOLD &&
     report.entries.every((entry) => entry.actionability.score >= LIVE_CERTIFICATION_ENTRY_THRESHOLD)
   );
@@ -454,7 +535,8 @@ export async function benchmarkCommand(args: string[]): Promise<number> {
 
   try {
     const env = process.env as Record<string, string | undefined>;
-    const evaluationTier = getEvaluationTierForProviderMode(options.providerMode);
+    const profileResolution = await buildBenchmarkProfiles(options, env);
+    const evaluationTier = getEvaluationTierForProviderMode(profileResolution.resolvedExecutionMode);
     const entryThreshold = getActionabilityThreshold(evaluationTier);
     const resolvedOutputDir = resolve(process.cwd(), options.outputDir);
     const transcriptOutputDir = join(resolvedOutputDir, "transcripts");
@@ -462,7 +544,7 @@ export async function benchmarkCommand(args: string[]): Promise<number> {
     await mkdir(transcriptOutputDir, { recursive: true });
     await mkdir(debugOutputDir, { recursive: true });
 
-    const profiles = buildBenchmarkProfiles(options.providerMode, env);
+    const profiles = profileResolution.profiles;
     const reportEntries: BenchmarkReportEntry[] = [];
     const totalEntries = BUILTIN_ADAPTER_IDS.reduce(
       (total, adapterId) => total + BENCHMARK_TOPICS_BY_ADAPTER[adapterId].length * profiles.length,
@@ -473,14 +555,16 @@ export async function benchmarkCommand(args: string[]): Promise<number> {
     for (const profile of profiles) {
       for (const adapterId of BUILTIN_ADAPTER_IDS) {
         const loadedAdapter = await loadDomainAdapter(adapterId);
-        const adapter =
-          options.providerMode === "mock"
-            ? loadedAdapter
-            : applyProviderProfile(loadedAdapter, profile.providerId);
+        const adapter = profile.connector
+          ? applyConnectorToAdapter(loadedAdapter, profile.connector)
+          : loadedAdapter;
         const providerRegistry = createProviderRegistryForRun({
           adapter,
-          providerMode: options.providerMode,
-          env
+          providerMode: profile.resolvedExecutionMode,
+          env: {
+            ...env,
+            ...profile.envOverlay
+          }
         });
         const adapterTopics = BENCHMARK_TOPICS_BY_ADAPTER[adapterId];
 
@@ -505,8 +589,14 @@ export async function benchmarkCommand(args: string[]): Promise<number> {
                 metadata: {
                   benchmarkEntryId: entryId,
                   evaluationTier,
-                  providerMode: options.providerMode,
-                  providerId: profile.providerId
+                  providerMode: options.executionMode,
+                  executionMode: options.executionMode,
+                  resolvedExecutionMode: profile.resolvedExecutionMode,
+                  providerId: profile.providerId,
+                  connectorId: profile.connectorId,
+                  credentialSource: profile.credentialSource,
+                  activeConnectorId: profileResolution.activeConnectorId,
+                  certificationScope: profileResolution.certificationScope
                 },
                 config: {
                   qualityGate: {
@@ -546,6 +636,8 @@ export async function benchmarkCommand(args: string[]): Promise<number> {
               entryId,
               adapterId,
               providerId: profile.providerId,
+              connectorId: profile.connectorId,
+              credentialSource: profile.credentialSource,
               topic,
               inputTokens,
               outputTokens,
@@ -560,7 +652,13 @@ export async function benchmarkCommand(args: string[]): Promise<number> {
                 generatedAt: new Date().toISOString(),
                 entryId,
                 evaluationTier,
-                providerMode: options.providerMode,
+                providerMode: options.executionMode,
+                executionMode: options.executionMode,
+                resolvedExecutionMode: profile.resolvedExecutionMode,
+                connectorId: profile.connectorId,
+                credentialSource: profile.credentialSource,
+                certificationScope: profileResolution.certificationScope,
+                activeConnectorId: profileResolution.activeConnectorId,
                 adapterId,
                 providerId: profile.providerId,
                 topic,
@@ -592,7 +690,13 @@ export async function benchmarkCommand(args: string[]): Promise<number> {
               generatedAt: new Date().toISOString(),
               entryId,
               evaluationTier,
-              providerMode: options.providerMode,
+              providerMode: options.executionMode,
+              executionMode: options.executionMode,
+              resolvedExecutionMode: profile.resolvedExecutionMode,
+              connectorId: profile.connectorId,
+              credentialSource: profile.credentialSource,
+              certificationScope: profileResolution.certificationScope,
+              activeConnectorId: profileResolution.activeConnectorId,
               adapterId,
               providerId: profile.providerId,
               topic,
@@ -609,6 +713,8 @@ export async function benchmarkCommand(args: string[]): Promise<number> {
               entryId,
               adapterId,
               providerId: profile.providerId,
+              connectorId: profile.connectorId,
+              credentialSource: profile.credentialSource,
               topic,
               inputTokens: 0,
               outputTokens: 0,
@@ -635,7 +741,11 @@ export async function benchmarkCommand(args: string[]): Promise<number> {
     const report: BenchmarkReport = {
       generatedAt: new Date().toISOString(),
       evaluationTier,
-      providerMode: options.providerMode,
+      providerMode: options.executionMode,
+      executionMode: options.executionMode,
+      resolvedExecutionMode: profileResolution.resolvedExecutionMode,
+      certificationScope: profileResolution.certificationScope,
+      activeConnectorId: profileResolution.activeConnectorId,
       providerIds: [...new Set(reportEntries.map((entry) => entry.providerId))],
       rubricVersion: ACTIONABILITY_RUBRIC_VERSION,
       baselineInputTokens: BASELINE_INPUT_TOKENS,

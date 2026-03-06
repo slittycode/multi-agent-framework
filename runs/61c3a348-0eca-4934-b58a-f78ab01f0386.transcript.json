@@ -1,0 +1,102 @@
+{
+  "runId": "61c3a348-0eca-4934-b58a-f78ab01f0386",
+  "adapterId": "fixture-live-gemini",
+  "topic": "CLI topic",
+  "startedAt": "2026-03-06T02:57:51.598Z",
+  "status": "completed",
+  "messages": [
+    {
+      "id": "c9e7248a-c337-46e2-b817-0321333167aa",
+      "runId": "61c3a348-0eca-4934-b58a-f78ab01f0386",
+      "roundId": "round-1",
+      "phaseId": "opening",
+      "turnIndex": 1,
+      "timestamp": "2026-03-06T02:57:51.600Z",
+      "from": "speaker",
+      "to": "all",
+      "kind": "agent_turn",
+      "content": "[mock:speaker] The next step should prioritize clarity, measurable outcomes, and iteration speed. [sig:82e0758f]",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-d38f03ed",
+      "usage": {
+        "inputTokens": 98,
+        "outputTokens": 13,
+        "latencyMs": 0
+      }
+    },
+    {
+      "id": "018392a5-eca3-4a9f-8025-253685614bac",
+      "runId": "61c3a348-0eca-4934-b58a-f78ab01f0386",
+      "roundId": "round-1",
+      "phaseId": "opening",
+      "turnIndex": 2,
+      "timestamp": "2026-03-06T02:57:51.600Z",
+      "from": "synth",
+      "to": "all",
+      "kind": "agent_turn",
+      "content": "[mock:synth] I challenge this claim because key assumptions are still unproven. [sig:1e07237f]",
+      "respondingToMessageId": "c9e7248a-c337-46e2-b817-0321333167aa",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-f63a3ab7",
+      "usage": {
+        "inputTokens": 152,
+        "outputTokens": 12,
+        "latencyMs": 0
+      }
+    },
+    {
+      "id": "9aa7ee59-2e4f-45dc-9abc-06cabb795698",
+      "runId": "61c3a348-0eca-4934-b58a-f78ab01f0386",
+      "roundId": "round-1",
+      "phaseId": "synthesis",
+      "turnIndex": 3,
+      "timestamp": "2026-03-06T02:57:51.601Z",
+      "from": "synth",
+      "to": "all",
+      "kind": "synthesis",
+      "content": "[mock:synth] The argument is strong in principle, yet execution details are underspecified. [sig:a3701df5]",
+      "respondingToMessageId": "018392a5-eca3-4a9f-8025-253685614bac",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-5c63c736",
+      "usage": {
+        "inputTokens": 207,
+        "outputTokens": 13,
+        "latencyMs": 0
+      }
+    }
+  ],
+  "metadata": {
+    "evaluationTier": "baseline",
+    "providerMode": "auto",
+    "executionMode": "auto",
+    "resolvedExecutionMode": "mock",
+    "providerSupport": [
+      {
+        "providerId": "gemini",
+        "recognized": true,
+        "liveCapable": true,
+        "requiredEnv": [
+          "GEMINI_API_KEY"
+        ],
+        "supportedAuthMethods": [
+          "api-key"
+        ],
+        "credentialSources": [
+          "env",
+          "keychain"
+        ],
+        "defaultModel": "gemini-2.5-flash"
+      }
+    ]
+  },
+  "synthesis": {
+    "agentId": "synth",
+    "messageId": "9aa7ee59-2e4f-45dc-9abc-06cabb795698",
+    "summary": "[mock:synth] The argument is strong in principle, yet execution details are underspecified. [sig:a3701df5]",
+    "raw": "[mock:synth] The argument is strong in principle, yet execution details are underspecified. [sig:a3701df5]"
+  },
+  "endedAt": "2026-03-06T02:57:51.601Z"
+}

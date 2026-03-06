@@ -1,0 +1,105 @@
+{
+  "runId": "bf9f512e-a4d2-4c2d-919f-765443b56370",
+  "adapterId": "fixture-live-gemini",
+  "topic": "CLI topic",
+  "startedAt": "2026-03-06T05:04:01.567Z",
+  "status": "completed",
+  "messages": [
+    {
+      "id": "382cfc53-9b41-424e-86ee-8b23e57eb029",
+      "runId": "bf9f512e-a4d2-4c2d-919f-765443b56370",
+      "roundId": "round-1",
+      "phaseId": "opening",
+      "turnIndex": 1,
+      "timestamp": "2026-03-06T05:04:01.568Z",
+      "from": "speaker",
+      "to": "all",
+      "kind": "agent_turn",
+      "content": "[mock:speaker] A balanced view suggests keeping strengths while mitigating obvious risks. [sig:3dbe8b9a]",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-4c9a7b4b",
+      "usage": {
+        "inputTokens": 98,
+        "outputTokens": 12,
+        "latencyMs": 0
+      }
+    },
+    {
+      "id": "d6ba55ad-413c-460d-9e12-72437e3bc9f2",
+      "runId": "bf9f512e-a4d2-4c2d-919f-765443b56370",
+      "roundId": "round-1",
+      "phaseId": "opening",
+      "turnIndex": 2,
+      "timestamp": "2026-03-06T05:04:01.569Z",
+      "from": "synth",
+      "to": "all",
+      "kind": "agent_turn",
+      "content": "[mock:synth] I challenge this claim because key assumptions are still unproven. [sig:2140d5c3]",
+      "respondingToMessageId": "382cfc53-9b41-424e-86ee-8b23e57eb029",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-0c0866ad",
+      "usage": {
+        "inputTokens": 150,
+        "outputTokens": 12,
+        "latencyMs": 0
+      }
+    },
+    {
+      "id": "2a838a03-0b9a-4f9f-9c3b-581de5b40da0",
+      "runId": "bf9f512e-a4d2-4c2d-919f-765443b56370",
+      "roundId": "round-1",
+      "phaseId": "synthesis",
+      "turnIndex": 3,
+      "timestamp": "2026-03-06T05:04:01.569Z",
+      "from": "synth",
+      "to": "all",
+      "kind": "synthesis",
+      "content": "[mock:synth] I partially agree, but the trade-offs need to be made explicit. [sig:f30eb50e]",
+      "respondingToMessageId": "d6ba55ad-413c-460d-9e12-72437e3bc9f2",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "providerInvocationId": "mock-inv-fa4c8527",
+      "usage": {
+        "inputTokens": 206,
+        "outputTokens": 13,
+        "latencyMs": 0
+      }
+    }
+  ],
+  "metadata": {
+    "evaluationTier": "baseline",
+    "providerMode": "auto",
+    "executionMode": "auto",
+    "resolvedExecutionMode": "mock",
+    "providerSupport": [
+      {
+        "providerId": "gemini",
+        "recognized": true,
+        "liveCapable": true,
+        "requiredEnv": [
+          "GEMINI_API_KEY"
+        ],
+        "declaredAuthMethods": [
+          "api-key"
+        ],
+        "supportedAuthMethods": [
+          "api-key"
+        ],
+        "credentialSources": [
+          "env",
+          "keychain"
+        ],
+        "defaultModel": "gemini-2.5-flash"
+      }
+    ]
+  },
+  "synthesis": {
+    "agentId": "synth",
+    "messageId": "2a838a03-0b9a-4f9f-9c3b-581de5b40da0",
+    "summary": "[mock:synth] I partially agree, but the trade-offs need to be made explicit. [sig:f30eb50e]",
+    "raw": "[mock:synth] I partially agree, but the trade-offs need to be made explicit. [sig:f30eb50e]"
+  },
+  "endedAt": "2026-03-06T05:04:01.569Z"
+}

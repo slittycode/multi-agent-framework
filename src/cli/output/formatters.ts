@@ -1,5 +1,6 @@
 import type { Message, RunContext, SynthesisOutput } from "../../types";
 import type { ActionabilityEvaluation } from "../../core/actionability";
+import type { AvailableConnector } from "../../connectors/types";
 import type { ProviderMode, ProviderSupportDescriptor } from "../../providers/provider-bootstrap";
 
 export interface MessageFormatOptions {
@@ -21,9 +22,12 @@ export function formatRunHeader(input: {
   runId: string;
   adapterName: string;
   topic: string;
-  providerMode: ProviderMode;
+  requestedExecutionMode: ProviderMode;
+  resolvedExecutionMode: "mock" | "live";
   evaluationTier: string;
   providerSupport: ProviderSupportDescriptor[];
+  connector?: AvailableConnector;
+  activeConnectorId?: string;
 }): string {
   const providerLines =
     input.providerSupport.length === 0
@@ -50,7 +54,14 @@ export function formatRunHeader(input: {
     `Run ID: ${input.runId}`,
     `Adapter: ${input.adapterName}`,
     `Topic: ${input.topic}`,
-    `Provider Mode: ${input.providerMode}`,
+    `Execution Mode: ${input.requestedExecutionMode}`,
+    `Resolved Execution Mode: ${input.resolvedExecutionMode}`,
+    `Selected Connector: ${
+      input.connector
+        ? `${input.connector.id} (${input.connector.providerId}/${input.connector.credentialSource})`
+        : "none"
+    }`,
+    `Active Connector: ${input.activeConnectorId ?? "none"}`,
     `Evaluation Tier: ${input.evaluationTier}`,
     ...providerLines,
     "----------------------------------"

@@ -1,0 +1,111 @@
+{
+  "generatedAt": "2026-03-06T02:58:53.560Z",
+  "evaluationTier": "baseline",
+  "rubricVersion": "2026-03-06.v1",
+  "baselineInputTokens": 15357,
+  "targetInputTokens": 11518,
+  "actionabilityThreshold": 75,
+  "meanInputTokens": 1774.11,
+  "meanActionabilityScore": 8.11,
+  "entries": [
+    {
+      "adapterId": "general-debate",
+      "topic": "Is remote work better than office work?",
+      "inputTokens": 1747,
+      "outputTokens": 86,
+      "actionability": {
+        "score": 10,
+        "passed": false,
+        "evaluationTier": "baseline"
+      }
+    },
+    {
+      "adapterId": "general-debate",
+      "topic": "How should teams balance experimentation and reliability?",
+      "inputTokens": 1745,
+      "outputTokens": 87,
+      "actionability": {
+        "score": 7.5,
+        "passed": false,
+        "evaluationTier": "baseline"
+      }
+    },
+    {
+      "adapterId": "general-debate",
+      "topic": "What makes creative feedback actionable?",
+      "inputTokens": 1744,
+      "outputTokens": 89,
+      "actionability": {
+        "score": 6,
+        "passed": false,
+        "evaluationTier": "baseline"
+      }
+    },
+    {
+      "adapterId": "creative-writing",
+      "topic": "Write a story about an AI that becomes self-aware",
+      "inputTokens": 1765,
+      "outputTokens": 90,
+      "actionability": {
+        "score": 9,
+        "passed": false,
+        "evaluationTier": "baseline"
+      }
+    },
+    {
+      "adapterId": "creative-writing",
+      "topic": "What makes a villain more compelling than the hero?",
+      "inputTokens": 1762,
+      "outputTokens": 90,
+      "actionability": {
+        "score": 7.5,
+        "passed": false,
+        "evaluationTier": "baseline"
+      }
+    },
+    {
+      "adapterId": "creative-writing",
+      "topic": "How does setting shape character in fiction?",
+      "inputTokens": 1736,
+      "outputTokens": 87,
+      "actionability": {
+        "score": 9,
+        "passed": false,
+        "evaluationTier": "baseline"
+      }
+    },
+    {
+      "adapterId": "ableton-feedback",
+      "topic": "How should a producer approach mixing a dense arrangement?",
+      "inputTokens": 1808,
+      "outputTokens": 88,
+      "actionability": {
+        "score": 7.5,
+        "passed": false,
+        "evaluationTier": "baseline"
+      }
+    },
+    {
+      "adapterId": "ableton-feedback",
+      "topic": "What is the role of silence and space in electronic music?",
+      "inputTokens": 1841,
+      "outputTokens": 89,
+      "actionability": {
+        "score": 9,
+        "passed": false,
+        "evaluationTier": "baseline"
+      }
+    },
+    {
+      "adapterId": "ableton-feedback",
+      "topic": "How do you decide when a track is finished?",
+      "inputTokens": 1819,
+      "outputTokens": 89,
+      "actionability": {
+        "score": 7.5,
+        "passed": false,
+        "evaluationTier": "baseline"
+      }
+    }
+  ]
+}
