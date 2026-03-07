@@ -1,22 +1,10 @@
-import { loadDomainAdapter } from "../../adapters/adapter-loader";
-import { applyConnectorToAdapter } from "../../connectors/adapter-override";
-import { createCredentialStore } from "../../connectors/credential-store";
+import type { ExecutionMode } from "../../connectors/connector-resolution";
+import type { ActionabilityEvaluation } from "../../core/actionability";
 import {
-  buildLiveExecutionRemediation,
-  evaluateConnectorExecutionReadiness
-} from "../../connectors/live-certification";
-import { resolveExecutionContext, type ExecutionMode } from "../../connectors/connector-resolution";
-import {
-  getActionabilityThreshold,
-  getEvaluationTierForProviderMode,
-  type ActionabilityEvaluation
-} from "../../core/actionability";
-import { runDiscussion } from "../../core/orchestrator";
-import {
-  createProviderRegistryForRun,
-  getAdapterProviderCapabilities
-} from "../../providers/provider-bootstrap";
-import type { DomainAdapter } from "../../types";
+  assertExecutionReady,
+  executePreparedRun,
+  prepareRunExecution
+} from "../../run/prepare-run";
 import { TerminalRenderer } from "../output/terminal-renderer";
 
 interface RunCliOptions {
@@ -43,30 +31,6 @@ function getRunUsage(): string {
     "  run --adapter-id <id> --topic <text> [--execution-mode mock|live|auto] [--connector <id>] [--model <model>] [--phase-judge on|off] [--quality-threshold 0-100] [--citation-mode transcript|optional-web] [--context-policy full|round-plus-recent] [--recent-context-count <n>] [--run-id <id>] [--output-dir <dir>] [--format json|jsonl] [--no-persist]",
     "  run --adapter-file <path> --topic <text> [--execution-mode mock|live|auto] [--connector <id>] [--model <model>] [--phase-judge on|off] [--quality-threshold 0-100] [--citation-mode transcript|optional-web] [--context-policy full|round-plus-recent] [--recent-context-count <n>] [--run-id <id>] [--output-dir <dir>] [--format json|jsonl] [--no-persist]"
   ].join("\n");
-}
-
-function applyModelOverride(adapter: DomainAdapter, model?: string): DomainAdapter {
-  const normalizedModel = model?.trim();
-  if (!normalizedModel) {
-    return adapter;
-  }
-
-  return {
-    ...adapter,
-    agents: adapter.agents.map((agent) => {
-      if (!agent.llm) {
-        return agent;
-      }
-
-      return {
-        ...agent,
-        llm: {
-          ...agent.llm,
-          model: normalizedModel
-        }
-      };
-    })
-  };
 }
 
 function parseRunOptions(args: string[]): RunCliOptions {
@@ -301,120 +265,42 @@ export async function runCommand(args: string[]): Promise<number> {
 
   try {
     const adapterSource = options.adapterId ?? options.adapterFile;
-    const loadedAdapter = await loadDomainAdapter(adapterSource as string, { cwd: process.cwd() });
-    const credentialStore = createCredentialStore(process.env as Record<string, string | undefined>);
-    const resolution = await resolveExecutionContext({
-      cwd: process.cwd(),
+    const preparedRun = await prepareRunExecution({
+      adapterSource: adapterSource as string,
+      topic: options.topic as string,
+      runId: options.runId,
+      outputDir: options.outputDir,
+      format: options.format,
+      model: options.model,
+      phaseJudgeEnabled: options.phaseJudgeEnabled,
+      qualityThreshold: options.qualityThreshold,
+      citationMode: options.citationMode,
+      contextPolicyMode: options.contextPolicyMode,
+      recentContextCount: options.recentContextCount,
       executionMode: options.executionMode,
-      explicitConnectorId: options.connectorId,
+      connectorId: options.connectorId,
+      noPersist: options.noPersist,
+      cwd: process.cwd(),
       env: process.env as Record<string, string | undefined>,
-      credentialStore,
       requireStoredConnector: true
     });
-    const resolvedAdapter = resolution.connector
-      ? applyConnectorToAdapter(loadedAdapter, resolution.connector)
-      : loadedAdapter;
-    const adapter = applyModelOverride(resolvedAdapter, options.model);
-    const providerSupport = getAdapterProviderCapabilities(adapter);
-    const evaluationTier = getEvaluationTierForProviderMode(resolution.resolvedExecutionMode);
-    const runId = options.runId ?? crypto.randomUUID();
 
     renderer.renderHeader({
-      runId,
-      adapterName: adapter.name,
+      runId: preparedRun.runId,
+      adapterName: preparedRun.adapter.name,
       topic: options.topic as string,
       requestedExecutionMode: options.executionMode,
-      resolvedExecutionMode: resolution.resolvedExecutionMode,
-      evaluationTier,
-      providerSupport,
-      connector: resolution.connector,
-      activeConnectorId: resolution.activeConnectorId
+      resolvedExecutionMode: preparedRun.resolution.resolvedExecutionMode,
+      evaluationTier: preparedRun.evaluationTier,
+      providerSupport: preparedRun.providerSupport,
+      connector: preparedRun.resolution.connector,
+      activeConnectorId: preparedRun.resolution.activeConnectorId
     });
 
-    if (resolution.resolvedExecutionMode === "live" && resolution.connector) {
-      const readiness = evaluateConnectorExecutionReadiness({
-        id: resolution.connector.id,
-        runtimeStatus: resolution.connector.runtimeStatus,
-        runtimeStatusReason: resolution.connector.runtimeStatusReason,
-        liveCertification: resolution.connector.liveCertification
-      });
+    assertExecutionReady(preparedRun.resolution);
 
-      if (!readiness.runnable) {
-        throw new Error(buildLiveExecutionRemediation(resolution.connector, readiness));
-      }
-    }
-
-    const registry = createProviderRegistryForRun({
-      adapter,
-      providerMode: resolution.resolvedExecutionMode,
-      env: {
-        ...(process.env as Record<string, string | undefined>),
-        ...resolution.envOverlay
-      },
-      connectorByProviderId: resolution.connector
-        ? { [resolution.connector.providerId]: resolution.connector }
-        : undefined
-    });
-
-    const runConfig: NonNullable<Parameters<typeof runDiscussion>[0]["config"]> = {
-      transcript: {
-        persistToFile: !options.noPersist,
-        outputDir: options.outputDir ?? "./runs",
-        format: options.format ?? "json"
-      }
-    };
-    const adapterQualityGate = adapter.orchestrator?.qualityGate;
-    if (options.phaseJudgeEnabled !== undefined) {
-      runConfig.phaseJudge = {
-        enabled: options.phaseJudgeEnabled,
-        cadence: "after_each_phase",
-        agentId: adapter.synthesisAgentId
-      };
-    }
-    if (options.qualityThreshold !== undefined) {
-      runConfig.qualityGate = {
-        enabled: true,
-        threshold: options.qualityThreshold,
-        recordInTranscriptMetadata: adapterQualityGate?.recordInTranscriptMetadata
-      };
-    } else if (adapterQualityGate?.enabled) {
-      runConfig.qualityGate = {
-        ...adapterQualityGate,
-        enabled: true,
-        threshold: getActionabilityThreshold(evaluationTier)
-      };
-    }
-    if (options.citationMode) {
-      runConfig.citations = {
-        mode: options.citationMode,
-        failPolicy: "graceful_fallback"
-      };
-    }
-    if (options.contextPolicyMode || options.recentContextCount !== undefined) {
-      runConfig.contextPolicy = {
-        mode: options.contextPolicyMode ?? "round_plus_recent",
-        ...(options.recentContextCount !== undefined
-          ? { recentMessageCount: options.recentContextCount }
-          : {})
-      };
-    }
-
-    const result = await runDiscussion({
-      adapter,
-      topic: options.topic as string,
-      providerRegistry: registry,
-      runId,
-      config: runConfig,
-      evaluationTier,
-      metadata: {
-        evaluationTier,
-        providerMode: options.executionMode,
-        executionMode: options.executionMode,
-        resolvedExecutionMode: resolution.resolvedExecutionMode,
-        providerSupport,
-        connectorId: resolution.connector?.id,
-        activeConnectorId: resolution.activeConnectorId
-      },
+    const result = await executePreparedRun({
+      preparedRun,
       onMessage: (message) => {
         renderer.renderMessage(message);
       }
