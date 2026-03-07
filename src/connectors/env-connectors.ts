@@ -3,6 +3,7 @@ import {
   getDefaultModelForProvider,
   listLiveCapableProviderIds
 } from "../providers/provider-support";
+import { createEmptyLiveCertification } from "./live-certification";
 import type { AvailableConnector } from "./types";
 
 export function discoverEnvConnectors(
@@ -31,6 +32,7 @@ export function discoverEnvConnectors(
           credentialSource: "env",
           credentialRef: "GEMINI_API_KEY",
           lastCertificationStatus: "never",
+          liveCertification: createEmptyLiveCertification(),
           runtimeStatus: "ready",
           ...(support.providerNote ? { providerNote: support.providerNote } : {}),
           ephemeral: true
@@ -50,6 +52,7 @@ export function discoverEnvConnectors(
           credentialSource: "env",
           credentialRef: "KIMI_API_KEY",
           lastCertificationStatus: "never",
+          liveCertification: createEmptyLiveCertification(),
           runtimeStatus: "ready",
           ...(support.providerNote ? { providerNote: support.providerNote } : {}),
           ...(env.KIMI_BASE_URL?.trim() ? { baseURL: env.KIMI_BASE_URL.trim() } : {}),
@@ -70,6 +73,7 @@ export function discoverEnvConnectors(
           credentialSource: "env",
           credentialRef: "OPENAI_API_KEY",
           lastCertificationStatus: "never",
+          liveCertification: createEmptyLiveCertification(),
           runtimeStatus: "ready",
           ...(support.providerNote ? { providerNote: support.providerNote } : {}),
           ephemeral: true

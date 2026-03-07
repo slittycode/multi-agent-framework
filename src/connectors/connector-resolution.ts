@@ -161,12 +161,13 @@ export async function resolveExecutionContext(input: {
   explicitConnectorId?: string;
   env?: Record<string, string | undefined>;
   credentialStore: CredentialStore;
+  requireStoredConnector?: boolean;
 }): Promise<ResolvedExecutionContext> {
   const available = await listAvailableConnectors(input);
   const activeConnectorId = available.activeConnectorId;
-  const envConnectors = available.connectors.filter(
-    (connector) => connector.ephemeral && !isConnectorBlocked(connector)
-  );
+  const envConnectors = input.requireStoredConnector
+    ? []
+    : available.connectors.filter((connector) => connector.ephemeral && !isConnectorBlocked(connector));
 
   if (input.executionMode === "mock") {
     return {
@@ -184,6 +185,11 @@ export async function resolveExecutionContext(input: {
 
     if (!connector) {
       throw new Error(`Connector "${input.explicitConnectorId}" is not available.`);
+    }
+    if (input.requireStoredConnector && connector.ephemeral) {
+      throw new Error(
+        `Connector "${connector.id}" is environment-backed. Store it with auth login before using live execution.`
+      );
     }
 
     const resolved = await materializeConnector(connector, input);
@@ -218,6 +224,10 @@ export async function resolveExecutionContext(input: {
     }
   }
 
+  if (input.requireStoredConnector && activeConnector?.ephemeral) {
+    activeConnector = undefined;
+  }
+
   if (activeConnector && !isConnectorBlocked(activeConnector)) {
     const resolved = await materializeConnector(activeConnector, input);
     return {
@@ -235,7 +245,22 @@ export async function resolveExecutionContext(input: {
     throw new Error(formatBlockedConnectorMessage(activeConnector));
   }
 
+  if (activeConnector && isConnectorBlocked(activeConnector) && input.requireStoredConnector) {
+    throw new Error(formatBlockedConnectorMessage(activeConnector));
+  }
+
   if (!activeConnector && staleEnvBackedActiveConnector && input.executionMode === "auto") {
+    if (input.requireStoredConnector) {
+      return {
+        requestedExecutionMode: "auto",
+        resolvedExecutionMode: "mock",
+        catalog: available.catalog,
+        activeConnectorId,
+        availableConnectors: available.connectors,
+        envOverlay: {}
+      };
+    }
+
     const storedReadyConnectors = available.connectors.filter(
       (connector) => !connector.ephemeral && !isConnectorBlocked(connector)
     );
@@ -280,7 +305,11 @@ export async function resolveExecutionContext(input: {
   }
 
   if (input.executionMode === "live") {
-    throw new Error("No live connector is configured. Use auth login or export a single provider API key.");
+    throw new Error(
+      input.requireStoredConnector
+        ? "No stored live connector is configured. Use auth login to store one first."
+        : "No live connector is configured. Use auth login or export a single provider API key."
+    );
   }
 
   return {

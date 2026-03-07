@@ -1,18 +1,33 @@
+import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 
-import { certifyConnector } from "../../connectors/auth-certifier";
+import {
+  persistCertificationManifest,
+  runAuthSmokeCheck,
+  runProviderSmokeCheck,
+  runRunProbeCheck,
+  updateConnectorCertification
+} from "../../connectors/auth-certifier";
 import { loadConnectorCatalog, saveConnectorCatalog } from "../../connectors/catalog";
 import { createCredentialStore } from "../../connectors/credential-store";
+import {
+  BENCHMARK_CERTIFICATION_TTL_MS,
+  evaluateConnectorExecutionReadiness,
+  normalizeLiveCertification
+} from "../../connectors/live-certification";
 import { listAvailableConnectors, resolveConnectorById } from "../../connectors/connector-resolution";
 import {
   isConnectorBlocked,
   type ConnectorCatalog,
+  type ConnectorCertificationLayerRecord,
   type ConnectorRecord
 } from "../../connectors/types";
 import { CodexAppServerClient } from "../../providers/clients/codex-app-server";
 import { describeProviderSupport, getDefaultModelForProvider } from "../../providers/provider-support";
+import { runBenchmarkSuite } from "./benchmark";
 
 type AuthSubcommand = "login" | "status" | "logout" | "certify";
+type AuthCertifyProfile = "smoke" | "full";
 
 interface AuthLoginOptions {
   provider?: string;
@@ -30,6 +45,7 @@ interface AuthCommandOptions {
   login: AuthLoginOptions;
   connectorId?: string;
   outputDir?: string;
+  profile: AuthCertifyProfile;
 }
 
 function getAuthUsage(): string {
@@ -38,7 +54,7 @@ function getAuthUsage(): string {
     "  auth login --provider gemini|kimi|openai --method api-key|chatgpt-oauth [--connector-id <id>] [--model <model>] [--use] [--no-certify]",
     "  auth status [--connector <id>]",
     "  auth logout [--connector <id>]",
-    "  auth certify [--connector <id>] [--output-dir <dir>]"
+    "  auth certify [--connector <id>] [--profile smoke|full] [--output-dir <dir>]"
   ].join("\n");
 }
 
@@ -47,7 +63,8 @@ function parseAuthOptions(args: string[]): AuthCommandOptions {
     login: {
       use: false,
       noCertify: false
-    }
+    },
+    profile: "full"
   };
 
   const [subcommand, ...rest] = args;
@@ -93,6 +110,15 @@ function parseAuthOptions(args: string[]): AuthCommandOptions {
         index += 1;
         break;
       }
+      case "--profile": {
+        const value = tokens[index + 1];
+        if (value !== "smoke" && value !== "full") {
+          throw new Error(`Invalid --profile value: ${value}. Expected smoke|full.`);
+        }
+        options.profile = value;
+        index += 1;
+        break;
+      }
       case "--use": {
         options.login.use = true;
         break;
@@ -122,6 +148,25 @@ function upsertConnector(catalog: ConnectorCatalog, connector: ConnectorRecord):
   };
 }
 
+function addMs(timestamp: string, durationMs: number): string {
+  return new Date(new Date(timestamp).getTime() + durationMs).toISOString();
+}
+
+function buildBenchmarkLayerRecord(
+  outputPath: string,
+  report: { generatedAt: string },
+  exitCode: number
+): ConnectorCertificationLayerRecord {
+  const passed = exitCode === 0;
+  return {
+    status: passed ? "passed" : "failed",
+    checkedAt: report.generatedAt,
+    freshUntil: addMs(report.generatedAt, BENCHMARK_CERTIFICATION_TTL_MS),
+    artifactPath: outputPath,
+    ...(passed ? {} : { message: "Live benchmark certification thresholds were not met." })
+  };
+}
+
 async function promptForApiKey(): Promise<string> {
   const rl = createInterface({
     input: process.stdin,
@@ -133,6 +178,74 @@ async function promptForApiKey(): Promise<string> {
   } finally {
     rl.close();
   }
+}
+
+async function getCredentialAvailability(connector: ConnectorRecord): Promise<boolean> {
+  const credentialStore = createCredentialStore(process.env as Record<string, string | undefined>);
+
+  if (connector.credentialSource === "codex-app-server") {
+    const appServer = new CodexAppServerClient({
+      env: process.env as Record<string, string | undefined>
+    });
+    try {
+      const account = await appServer.getAccount({ refresh: true });
+      if (account.account?.type === "chatgpt" && account.account.email) {
+        console.log(
+          `ChatGPT account: ${account.account.email}${
+            account.account.planType ? ` (${account.account.planType})` : ""
+          }`
+        );
+      }
+      return account.account?.type === "chatgpt";
+    } finally {
+      await appServer.disconnect();
+    }
+  }
+
+  if (connector.credentialSource === "env") {
+    return Boolean((process.env as Record<string, string | undefined>)[connector.credentialRef]?.trim());
+  }
+
+  return Boolean(await credentialStore.get(connector.credentialRef));
+}
+
+function printFullCertificationReminder(connectorId: string): void {
+  console.log("Full certification required before live runs.");
+  console.log(`Next: bun run start -- auth certify --profile full --connector ${connectorId}`);
+}
+
+async function runLoginAuthCheck(input: {
+  connector: ConnectorRecord;
+  env: Record<string, string | undefined>;
+  outputDir?: string;
+}): Promise<{
+  updatedConnector: ConnectorRecord;
+  artifactPath: string;
+  passed: boolean;
+}> {
+  const authResult = await runAuthSmokeCheck({
+    connector: {
+      ...input.connector,
+      ephemeral: false
+    },
+    env: input.env,
+    outputDir: input.outputDir
+  });
+  const generatedAt = new Date().toISOString();
+  const updatedConnector = updateConnectorCertification({
+    connector: input.connector,
+    profile: "auth",
+    generatedAt,
+    layerUpdates: {
+      auth: authResult.layer
+    }
+  });
+
+  return {
+    updatedConnector,
+    artifactPath: authResult.artifactPath,
+    passed: authResult.artifact.passed
+  };
 }
 
 async function handleAuthLogin(options: AuthLoginOptions): Promise<number> {
@@ -178,8 +291,7 @@ async function handleAuthLogin(options: AuthLoginOptions): Promise<number> {
         throw new Error("OpenAI ChatGPT OAuth login did not produce an authenticated ChatGPT account.");
       }
 
-      const resolvedModel =
-        options.model?.trim() || (await appServer.getDefaultModel()).model;
+      const resolvedModel = options.model?.trim() || (await appServer.getDefaultModel()).model;
 
       const catalog = await loadConnectorCatalog();
       const connector: ConnectorRecord = {
@@ -220,25 +332,20 @@ async function handleAuthLogin(options: AuthLoginOptions): Promise<number> {
         return 0;
       }
 
-      const result = await certifyConnector({
-        connector: {
-          ...connector,
-          ephemeral: false
-        },
+      const authCheck = await runLoginAuthCheck({
+        connector,
         env: process.env as Record<string, string | undefined>,
         outputDir: options.outputDir
       });
-
-      updatedCatalog = upsertConnector(updatedCatalog, {
-        ...connector,
-        lastCertifiedAt: result.artifact.generatedAt,
-        lastCertificationStatus: result.artifact.passed ? "passed" : "failed"
-      });
+      updatedCatalog = upsertConnector(updatedCatalog, authCheck.updatedConnector);
       await saveConnectorCatalog(updatedCatalog);
 
-      console.log(`Certification: ${result.artifact.passed ? "passed" : "failed"}`);
-      console.log(`Auth artifact: ${result.artifactPath}`);
-      return result.artifact.passed ? 0 : 1;
+      console.log(`Auth check: ${authCheck.passed ? "passed" : "failed"}`);
+      console.log(`Auth artifact: ${authCheck.artifactPath}`);
+      if (authCheck.passed) {
+        printFullCertificationReminder(connectorId);
+      }
+      return authCheck.passed ? 0 : 1;
     } finally {
       await appServer.disconnect();
     }
@@ -298,29 +405,26 @@ async function handleAuthLogin(options: AuthLoginOptions): Promise<number> {
     connectorId,
     credentialStore
   });
-  const result = await certifyConnector({
-    connector: resolved.connector,
+  const authCheck = await runLoginAuthCheck({
+    connector,
     env: {
       ...(process.env as Record<string, string | undefined>),
       ...resolved.envOverlay
     },
     outputDir: options.outputDir
   });
-
-  updatedCatalog = upsertConnector(updatedCatalog, {
-    ...connector,
-    lastCertifiedAt: result.artifact.generatedAt,
-    lastCertificationStatus: result.artifact.passed ? "passed" : "failed"
-  });
+  updatedCatalog = upsertConnector(updatedCatalog, authCheck.updatedConnector);
   await saveConnectorCatalog(updatedCatalog);
 
-  console.log(`Certification: ${result.artifact.passed ? "passed" : "failed"}`);
-  console.log(`Auth artifact: ${result.artifactPath}`);
-  return result.artifact.passed ? 0 : 1;
+  console.log(`Auth check: ${authCheck.passed ? "passed" : "failed"}`);
+  console.log(`Auth artifact: ${authCheck.artifactPath}`);
+  if (authCheck.passed) {
+    printFullCertificationReminder(connectorId);
+  }
+  return authCheck.passed ? 0 : 1;
 }
 
 async function handleAuthStatus(connectorId?: string): Promise<number> {
-  const credentialStore = createCredentialStore(process.env as Record<string, string | undefined>);
   const available = await listAvailableConnectors({
     env: process.env as Record<string, string | undefined>
   });
@@ -358,41 +462,37 @@ async function handleAuthStatus(connectorId?: string): Promise<number> {
     return 1;
   }
 
-  const credentialAvailable =
-    connector.credentialSource === "codex-app-server"
-      ? await (async () => {
-          const appServer = new CodexAppServerClient({
-            env: process.env as Record<string, string | undefined>
-          });
-          try {
-            const account = await appServer.getAccount({ refresh: true });
-            if (account.account?.type === "chatgpt") {
-              if (account.account.email) {
-                console.log(
-                  `ChatGPT account: ${account.account.email}${
-                    account.account.planType ? ` (${account.account.planType})` : ""
-                  }`
-                );
-              }
-              return true;
-            }
-
-            return false;
-          } finally {
-            await appServer.disconnect();
-          }
-        })()
-      : connector.credentialSource === "env"
-        ? Boolean((process.env as Record<string, string | undefined>)[connector.credentialRef]?.trim())
-        : Boolean(await credentialStore.get(connector.credentialRef));
+  const credentialAvailable = await getCredentialAvailability(connector);
+  const liveCertification = normalizeLiveCertification(connector.liveCertification);
+  const readiness = evaluateConnectorExecutionReadiness({
+    id: connector.id,
+    runtimeStatus: connector.runtimeStatus,
+    runtimeStatusReason: connector.runtimeStatusReason,
+    liveCertification
+  });
 
   console.log(`Credential source: ${connector.credentialSource}`);
   console.log(`Credential available: ${credentialAvailable ? "yes" : "no"}`);
   console.log(
-    `Certification: ${connector.lastCertificationStatus}${
+    `Certification readiness: ${readiness.overallStatus}${
       connector.lastCertifiedAt ? ` at ${connector.lastCertifiedAt}` : ""
     }`
   );
+  if (liveCertification.latestProfile) {
+    console.log(`Latest certification profile: ${liveCertification.latestProfile}`);
+  }
+  if (liveCertification.manifestPath) {
+    console.log(`Certification manifest: ${liveCertification.manifestPath}`);
+  }
+  if (readiness.freshUntil) {
+    console.log(`Fresh until: ${readiness.freshUntil}`);
+  }
+  if (!readiness.runnable) {
+    const recommendedProfile = liveCertification.latestProfile === "auth" ? "full" : readiness.requiredProfile ?? "full";
+    console.log(
+      `Remediation: bun run start -- auth certify --profile ${recommendedProfile} --connector ${connector.id}`
+    );
+  }
   return credentialAvailable ? 0 : 1;
 }
 
@@ -448,7 +548,11 @@ async function handleAuthLogout(connectorId?: string): Promise<number> {
   return 0;
 }
 
-async function handleAuthCertify(connectorId?: string, outputDir?: string): Promise<number> {
+async function handleAuthCertify(
+  connectorId?: string,
+  outputDir?: string,
+  profile: AuthCertifyProfile = "full"
+): Promise<number> {
   const credentialStore = createCredentialStore(process.env as Record<string, string | undefined>);
   const available = await listAvailableConnectors({
     env: process.env as Record<string, string | undefined>
@@ -466,6 +570,11 @@ async function handleAuthCertify(connectorId?: string, outputDir?: string): Prom
   if (!selectedConnector) {
     throw new Error(`Connector "${resolvedConnectorId}" is not available.`);
   }
+  if (selectedConnector.ephemeral) {
+    throw new Error(
+      `Connector "${selectedConnector.id}" is environment-backed. Store it with auth login before certification.`
+    );
+  }
   if (isConnectorBlocked(selectedConnector)) {
     throw new Error(
       `Connector "${selectedConnector.id}" cannot be certified because it is blocked (${selectedConnector.runtimeStatusReason}).`
@@ -476,33 +585,108 @@ async function handleAuthCertify(connectorId?: string, outputDir?: string): Prom
     connectorId: resolvedConnectorId,
     credentialStore
   });
-  const result = await certifyConnector({
-    connector: resolved.connector,
-    env: {
-      ...(process.env as Record<string, string | undefined>),
-      ...resolved.envOverlay
-    },
-    outputDir
-  });
+  const env = {
+    ...(process.env as Record<string, string | undefined>),
+    ...resolved.envOverlay
+  };
+  const outputRoot = outputDir ?? "./runs/auth";
+  const catalog = await loadConnectorCatalog();
+  const storedConnector = catalog.connectors.find((candidate) => candidate.id === resolved.connector.id);
+  if (!storedConnector) {
+    throw new Error(`Connector "${resolved.connector.id}" is not stored in this workspace.`);
+  }
 
-  if (!resolved.connector.ephemeral) {
-    const catalog = await loadConnectorCatalog();
-    const connector = catalog.connectors.find((candidate) => candidate.id === resolved.connector.id);
-    if (connector) {
-      await saveConnectorCatalog(
-        upsertConnector(catalog, {
-          ...connector,
-          lastCertifiedAt: result.artifact.generatedAt,
-          lastCertificationStatus: result.artifact.passed ? "passed" : "failed"
-        })
-      );
+  const layerUpdates: Partial<Record<"auth" | "provider" | "run" | "benchmark", ConnectorCertificationLayerRecord>> = {};
+  let profilePassed = true;
+
+  const authResult = await runAuthSmokeCheck({
+    connector: resolved.connector,
+    env,
+    outputDir: outputRoot
+  });
+  layerUpdates.auth = authResult.layer;
+  profilePassed = authResult.artifact.passed;
+
+  if (profilePassed) {
+    const providerResult = await runProviderSmokeCheck({
+      connector: resolved.connector,
+      env,
+      outputDir: outputRoot
+    });
+    layerUpdates.provider = providerResult.layer;
+    profilePassed = providerResult.artifact.passed;
+
+    if (profilePassed) {
+      const runResult = await runRunProbeCheck({
+        connector: resolved.connector,
+        env,
+        outputDir: outputRoot
+      });
+      layerUpdates.run = runResult.layer;
+      profilePassed = runResult.artifact.passed;
     }
   }
 
+  if (profile === "full" && profilePassed) {
+    const benchmarkResult = await runBenchmarkSuite(
+      {
+        executionMode: "live",
+        connectorId: resolved.connector.id,
+        allConnectors: false,
+        outputDir: join(outputRoot, "benchmark")
+      },
+      env
+    );
+    layerUpdates.benchmark = buildBenchmarkLayerRecord(
+      benchmarkResult.outputPath,
+      benchmarkResult.report,
+      benchmarkResult.exitCode
+    );
+    profilePassed = benchmarkResult.exitCode === 0;
+  }
+
+  const generatedAt = new Date().toISOString();
+  const updatedConnector = updateConnectorCertification({
+    connector: storedConnector,
+    profile,
+    generatedAt,
+    layerUpdates
+  });
+  const manifestResult = await persistCertificationManifest({
+    connector: resolved.connector,
+    profile,
+    outputDir: outputRoot,
+    profilePassed,
+    updatedConnector
+  });
+  const finalConnector = updateConnectorCertification({
+    connector: updatedConnector,
+    profile,
+    generatedAt,
+    manifestPath: manifestResult.manifestPath,
+    layerUpdates: {}
+  });
+
+  await saveConnectorCatalog(upsertConnector(catalog, finalConnector));
+
   console.log(`Connector: ${resolved.connector.id}`);
-  console.log(`Certification: ${result.artifact.passed ? "passed" : "failed"}`);
-  console.log(`Auth artifact: ${result.artifactPath}`);
-  return result.artifact.passed ? 0 : 1;
+  console.log(`Profile: ${profile}`);
+  console.log(`Certification: ${profilePassed ? "passed" : "failed"}`);
+  console.log(`Manifest: ${manifestResult.manifestPath}`);
+
+  if (profile === "smoke" && profilePassed) {
+    const readiness = evaluateConnectorExecutionReadiness({
+      id: finalConnector.id,
+      runtimeStatus: finalConnector.runtimeStatus,
+      runtimeStatusReason: finalConnector.runtimeStatusReason,
+      liveCertification: finalConnector.liveCertification
+    });
+    if (!readiness.runnable) {
+      printFullCertificationReminder(finalConnector.id);
+    }
+  }
+
+  return profilePassed ? 0 : 1;
 }
 
 export async function authCommand(args: string[]): Promise<number> {
@@ -525,7 +709,7 @@ export async function authCommand(args: string[]): Promise<number> {
       case "logout":
         return handleAuthLogout(options.connectorId);
       case "certify":
-        return handleAuthCertify(options.connectorId, options.outputDir);
+        return handleAuthCertify(options.connectorId, options.outputDir, options.profile);
       default:
         console.error(getAuthUsage());
         return 1;

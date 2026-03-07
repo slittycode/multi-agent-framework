@@ -85,10 +85,10 @@ describe("Provider integration: ProviderRegistry + MockProvider", () => {
       turnIndex: 2
     });
 
-    expect(secondTurn.content).toContain("Claim:");
-    expect(secondTurn.content).toContain("Counterpoint:");
-    expect(secondTurn.content).toContain("Evidence:");
-    expect(secondTurn.content).toContain("[T1]");
+    expect(secondTurn.content).toContain("Listener pushes on");
+    expect(secondTurn.content).not.toContain("Claim:");
+    expect(secondTurn.content).not.toContain("Counterpoint:");
+    expect(secondTurn.content).not.toContain("Evidence:");
     expect(secondTurn.provider).toBe("mock");
     expect(secondTurn.model).toBe("mock-model-v1");
   });

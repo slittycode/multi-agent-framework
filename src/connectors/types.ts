@@ -2,12 +2,32 @@ import type { ProviderId } from "../types/provider";
 
 export type ConnectorAuthMethod = "api-key" | "chatgpt-oauth";
 export type ConnectorCredentialSource = "env" | "keychain" | "codex-app-server";
-export type ConnectorCertificationStatus = "never" | "passed" | "failed" | "blocked";
+export type ConnectorCertificationStatus = "never" | "passed" | "failed" | "blocked" | "stale";
+export type ConnectorCertificationProfile = "auth" | "smoke" | "full" | "benchmark";
+export type ConnectorCertificationLayerId = "auth" | "provider" | "run" | "benchmark";
+export type ConnectorCertificationLayerStatus = "never" | "passed" | "failed";
 export type ConnectorRuntimeStatus = "ready" | "blocked";
 export type ConnectorRuntimeStatusReason =
   | "oauth_not_implemented"
   | "credential_missing"
   | "auth_method_not_supported";
+
+export interface ConnectorCertificationLayerRecord {
+  status: ConnectorCertificationLayerStatus;
+  checkedAt?: string;
+  freshUntil?: string;
+  artifactPath?: string;
+  message?: string;
+}
+
+export interface ConnectorLiveCertification {
+  latestProfile?: ConnectorCertificationProfile;
+  overallStatus: ConnectorCertificationStatus;
+  checkedAt?: string;
+  freshUntil?: string;
+  manifestPath?: string;
+  layers: Record<ConnectorCertificationLayerId, ConnectorCertificationLayerRecord>;
+}
 
 export interface ConnectorRecord {
   id: string;
@@ -18,6 +38,7 @@ export interface ConnectorRecord {
   credentialRef: string;
   lastCertifiedAt?: string;
   lastCertificationStatus: ConnectorCertificationStatus;
+  liveCertification?: ConnectorLiveCertification;
   runtimeStatus: ConnectorRuntimeStatus;
   runtimeStatusReason?: ConnectorRuntimeStatusReason;
   trackedIssueUrl?: string;
@@ -26,7 +47,7 @@ export interface ConnectorRecord {
 }
 
 export interface ConnectorCatalog {
-  schemaVersion: 1;
+  schemaVersion: 2;
   activeConnectorId?: string;
   connectors: ConnectorRecord[];
 }

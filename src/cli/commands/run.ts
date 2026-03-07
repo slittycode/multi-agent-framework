@@ -1,6 +1,10 @@
 import { loadDomainAdapter } from "../../adapters/adapter-loader";
 import { applyConnectorToAdapter } from "../../connectors/adapter-override";
 import { createCredentialStore } from "../../connectors/credential-store";
+import {
+  buildLiveExecutionRemediation,
+  evaluateConnectorExecutionReadiness
+} from "../../connectors/live-certification";
 import { resolveExecutionContext, type ExecutionMode } from "../../connectors/connector-resolution";
 import {
   getActionabilityThreshold,
@@ -304,7 +308,8 @@ export async function runCommand(args: string[]): Promise<number> {
       executionMode: options.executionMode,
       explicitConnectorId: options.connectorId,
       env: process.env as Record<string, string | undefined>,
-      credentialStore
+      credentialStore,
+      requireStoredConnector: true
     });
     const resolvedAdapter = resolution.connector
       ? applyConnectorToAdapter(loadedAdapter, resolution.connector)
@@ -325,6 +330,19 @@ export async function runCommand(args: string[]): Promise<number> {
       connector: resolution.connector,
       activeConnectorId: resolution.activeConnectorId
     });
+
+    if (resolution.resolvedExecutionMode === "live" && resolution.connector) {
+      const readiness = evaluateConnectorExecutionReadiness({
+        id: resolution.connector.id,
+        runtimeStatus: resolution.connector.runtimeStatus,
+        runtimeStatusReason: resolution.connector.runtimeStatusReason,
+        liveCertification: resolution.connector.liveCertification
+      });
+
+      if (!readiness.runnable) {
+        throw new Error(buildLiveExecutionRemediation(resolution.connector, readiness));
+      }
+    }
 
     const registry = createProviderRegistryForRun({
       adapter,

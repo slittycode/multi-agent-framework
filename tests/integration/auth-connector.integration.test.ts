@@ -230,7 +230,7 @@ describe("integration/auth-connector", () => {
     }
   });
 
-  test("auth certify writes an auth artifact and updates stored certification status", async () => {
+  test("auth certify --profile smoke writes a manifest and records failed provider smoke", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "maf-auth-certify-"));
     const credentialFile = join(stateDir, "credentials.json");
     const outputDir = join(stateDir, "auth-artifacts");
@@ -261,22 +261,45 @@ describe("integration/auth-connector", () => {
       expect(loginResult.exitCode).toBe(0);
 
       const certifyResult = runCli(
-        ["auth", "certify", "--connector", "openai-main", "--output-dir", outputDir],
+        [
+          "auth",
+          "certify",
+          "--connector",
+          "openai-main",
+          "--profile",
+          "smoke",
+          "--output-dir",
+          outputDir
+        ],
         "",
         env
       );
 
       expect(certifyResult.exitCode).toBe(1);
       expect(certifyResult.stdout).toContain("Connector: openai-main");
+      expect(certifyResult.stdout).toContain("Profile: smoke");
       expect(certifyResult.stdout).toContain("Certification: failed");
-      expect(certifyResult.stdout).toContain("Auth artifact:");
+      expect(certifyResult.stdout).toContain("Manifest:");
 
       const artifactNames = await readdir(outputDir);
-      expect(artifactNames.some((name) => name.endsWith(".auth-cert.json"))).toBe(true);
+      expect(artifactNames.some((name) => name.endsWith(".certification-manifest.json"))).toBe(true);
 
       const catalogRaw = await readFile(join(stateDir, "connectors.json"), "utf8");
       const catalog = JSON.parse(catalogRaw) as {
-        connectors: Array<{ id: string; lastCertificationStatus: string; lastCertifiedAt?: string }>;
+        connectors: Array<{
+          id: string;
+          lastCertificationStatus: string;
+          lastCertifiedAt?: string;
+          liveCertification?: {
+            latestProfile?: string;
+            layers: {
+              auth: { status: string };
+              provider: { status: string };
+              run: { status: string };
+              benchmark: { status: string };
+            };
+          };
+        }>;
       };
 
       expect(catalog.connectors).toContainEqual(
@@ -286,6 +309,17 @@ describe("integration/auth-connector", () => {
         })
       );
       expect(
+        catalog.connectors.find((connector) => connector.id === "openai-main")?.liveCertification
+      ).toMatchObject({
+        latestProfile: "smoke",
+        layers: {
+          auth: { status: "passed" },
+          provider: { status: "failed" },
+          run: { status: "never" },
+          benchmark: { status: "never" }
+        }
+      });
+      expect(
         catalog.connectors.find((connector) => connector.id === "openai-main")?.lastCertifiedAt
       ).toEqual(expect.any(String));
     } finally {
@@ -293,9 +327,10 @@ describe("integration/auth-connector", () => {
     }
   });
 
-  test("openai chatgpt-oauth login authenticates through the Codex app-server and certifies by default", async () => {
+  test("openai chatgpt-oauth login authenticates through the Codex app-server, records auth smoke, and leaves full certification pending", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "maf-auth-openai-oauth-"));
     const credentialFile = join(stateDir, "credentials.json");
+    const outputDir = join(stateDir, "login-artifacts");
     const env = {
       MAF_STATE_DIR: stateDir,
       MAF_CREDENTIAL_STORE_BACKEND: "file",
@@ -314,6 +349,8 @@ describe("integration/auth-connector", () => {
           "chatgpt-oauth",
           "--connector-id",
           "openai-oauth",
+          "--output-dir",
+          outputDir,
           "--use"
         ],
         "",
@@ -323,7 +360,8 @@ describe("integration/auth-connector", () => {
       expect(loginResult.exitCode).toBe(0);
       expect(loginResult.stdout).toContain("Stored connector: openai-oauth");
       expect(loginResult.stdout).toContain("Auth method: chatgpt-oauth");
-      expect(loginResult.stdout).toContain("Certification: passed");
+      expect(loginResult.stdout).toContain("Auth check: passed");
+      expect(loginResult.stdout).toContain("Full certification required before live runs");
 
       const catalogRaw = await readFile(join(stateDir, "connectors.json"), "utf8");
       const catalog = JSON.parse(catalogRaw) as {
@@ -336,6 +374,15 @@ describe("integration/auth-connector", () => {
           credentialSource: string;
           lastCertificationStatus: string;
           lastCertifiedAt?: string;
+          liveCertification?: {
+            latestProfile?: string;
+            layers: {
+              auth: { status: string };
+              provider: { status: string };
+              run: { status: string };
+              benchmark: { status: string };
+            };
+          };
           runtimeStatus: string;
         }>;
       };
@@ -348,19 +395,35 @@ describe("integration/auth-connector", () => {
           authMethod: "chatgpt-oauth",
           defaultModel: "gpt-5.3-codex",
           credentialSource: "codex-app-server",
-          lastCertificationStatus: "passed",
+          lastCertificationStatus: "never",
           runtimeStatus: "ready"
         })
       );
       expect(
+        catalog.connectors.find((connector) => connector.id === "openai-oauth")?.liveCertification
+      ).toMatchObject({
+        latestProfile: "auth",
+        layers: {
+          auth: { status: "passed" },
+          provider: { status: "never" },
+          run: { status: "never" },
+          benchmark: { status: "never" }
+        }
+      });
+      expect(
         catalog.connectors.find((connector) => connector.id === "openai-oauth")?.lastCertifiedAt
       ).toEqual(expect.any(String));
+
+      const loginArtifacts = await readdir(outputDir);
+      expect(loginArtifacts.some((name) => name.endsWith(".auth-smoke.json"))).toBe(true);
 
       const statusResult = runCli(["auth", "status", "--connector", "openai-oauth"], "", env);
       expect(statusResult.exitCode).toBe(0);
       expect(statusResult.stdout).toContain("Runtime status: ready");
       expect(statusResult.stdout).toContain("Credential source: codex-app-server");
       expect(statusResult.stdout).toContain("Credential available: yes");
+      expect(statusResult.stdout).toContain("Certification readiness:");
+      expect(statusResult.stdout).toContain("auth certify --profile full");
 
       const listResult = runCli(["connector", "list"], "", env);
       expect(listResult.exitCode).toBe(0);
@@ -371,6 +434,200 @@ describe("integration/auth-connector", () => {
       const useResult = runCli(["connector", "use", "--connector", "openai-oauth"], "", env);
       expect(useResult.exitCode).toBe(0);
       expect(useResult.stdout).toContain("Active connector: openai-oauth");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("auth certify --profile full records all certification layers for a stored oauth connector", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "maf-auth-openai-oauth-full-"));
+    const credentialFile = join(stateDir, "credentials.json");
+    const outputDir = join(stateDir, "full-cert-artifacts");
+    const env = {
+      MAF_STATE_DIR: stateDir,
+      MAF_CREDENTIAL_STORE_BACKEND: "file",
+      MAF_CREDENTIAL_STORE_FILE: credentialFile,
+      ...mockCodexAppServerEnv()
+    };
+
+    try {
+      const loginResult = runCli(
+        [
+          "auth",
+          "login",
+          "--provider",
+          "openai",
+          "--method",
+          "chatgpt-oauth",
+          "--connector-id",
+          "openai-oauth",
+          "--use",
+          "--no-certify"
+        ],
+        "",
+        env
+      );
+      expect(loginResult.exitCode).toBe(0);
+
+      const certifyResult = runCli(
+        [
+          "auth",
+          "certify",
+          "--connector",
+          "openai-oauth",
+          "--profile",
+          "full",
+          "--output-dir",
+          outputDir
+        ],
+        "",
+        env
+      );
+
+      expect(certifyResult.exitCode).toBe(0);
+      expect(certifyResult.stdout).toContain("Profile: full");
+      expect(certifyResult.stdout).toContain("Certification: passed");
+      expect(certifyResult.stdout).toContain("Manifest:");
+
+      const catalogRaw = await readFile(join(stateDir, "connectors.json"), "utf8");
+      const catalog = JSON.parse(catalogRaw) as {
+        connectors: Array<{
+          id: string;
+          lastCertificationStatus: string;
+          liveCertification?: {
+            latestProfile?: string;
+            layers: {
+              auth: { status: string };
+              provider: { status: string };
+              run: { status: string };
+              benchmark: { status: string };
+            };
+            manifestPath?: string;
+          };
+        }>;
+      };
+
+      expect(catalog.connectors.find((connector) => connector.id === "openai-oauth")).toMatchObject({
+        id: "openai-oauth",
+        lastCertificationStatus: "passed",
+        liveCertification: {
+          latestProfile: "full",
+          layers: {
+            auth: { status: "passed" },
+            provider: { status: "passed" },
+            run: { status: "passed" },
+            benchmark: { status: "passed" }
+          },
+          manifestPath: expect.any(String)
+        }
+      });
+
+      const artifactNames = await readdir(outputDir);
+      expect(artifactNames.some((name) => name.endsWith(".certification-manifest.json"))).toBe(true);
+      const benchmarkArtifacts = await readdir(join(outputDir, "benchmark"));
+      expect(benchmarkArtifacts.some((name) => /^v02-benchmark-\d+\.json$/.test(name))).toBe(true);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("direct live benchmark updates the connector benchmark layer and writes a certification index", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "maf-benchmark-cert-link-"));
+    const credentialFile = join(stateDir, "credentials.json");
+    const outputDir = join(stateDir, "benchmark-link-artifacts");
+    const env = {
+      MAF_STATE_DIR: stateDir,
+      MAF_CREDENTIAL_STORE_BACKEND: "file",
+      MAF_CREDENTIAL_STORE_FILE: credentialFile,
+      ...mockCodexAppServerEnv()
+    };
+
+    try {
+      const loginResult = runCli(
+        [
+          "auth",
+          "login",
+          "--provider",
+          "openai",
+          "--method",
+          "chatgpt-oauth",
+          "--connector-id",
+          "openai-oauth",
+          "--use",
+          "--no-certify"
+        ],
+        "",
+        env
+      );
+      expect(loginResult.exitCode).toBe(0);
+
+      const smokeResult = runCli(
+        [
+          "auth",
+          "certify",
+          "--connector",
+          "openai-oauth",
+          "--profile",
+          "smoke",
+          "--output-dir",
+          join(outputDir, "smoke")
+        ],
+        "",
+        env
+      );
+      expect(smokeResult.exitCode).toBe(0);
+
+      const benchmarkResult = runCli(
+        [
+          "benchmark",
+          "--execution-mode",
+          "live",
+          "--connector",
+          "openai-oauth",
+          "--output-dir",
+          outputDir
+        ],
+        "",
+        env
+      );
+
+      expect(benchmarkResult.exitCode).toBe(0);
+      expect(benchmarkResult.stdout).toContain("Evaluation Tier: live_certification");
+
+      const catalogRaw = await readFile(join(stateDir, "connectors.json"), "utf8");
+      const catalog = JSON.parse(catalogRaw) as {
+        connectors: Array<{
+          id: string;
+          lastCertificationStatus: string;
+          liveCertification?: {
+            latestProfile?: string;
+            layers: {
+              benchmark: { status: string; artifactPath?: string };
+            };
+            manifestPath?: string;
+          };
+        }>;
+      };
+
+      expect(catalog.connectors.find((connector) => connector.id === "openai-oauth")).toMatchObject({
+        id: "openai-oauth",
+        lastCertificationStatus: "passed",
+        liveCertification: {
+          latestProfile: "benchmark",
+          layers: {
+            benchmark: {
+              status: "passed",
+              artifactPath: expect.any(String)
+            }
+          },
+          manifestPath: expect.any(String)
+        }
+      });
+
+      const certificationArtifacts = await readdir(join(outputDir, "certification"));
+      expect(
+        certificationArtifacts.some((name) => /^benchmark-certification-index-\d+\.json$/.test(name))
+      ).toBe(true);
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }

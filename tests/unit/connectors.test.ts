@@ -21,7 +21,7 @@ describe("connectors", () => {
     try {
       await saveConnectorCatalog(
         {
-          schemaVersion: 1,
+          schemaVersion: 2,
           activeConnectorId: "openai-main",
           connectors: [
             {
@@ -96,7 +96,7 @@ describe("connectors", () => {
     try {
       await saveConnectorCatalog(
         {
-          schemaVersion: 1,
+          schemaVersion: 2,
           connectors: [
             {
               id: "kimi-main",
@@ -148,7 +148,7 @@ describe("connectors", () => {
     try {
       await saveConnectorCatalog(
         {
-          schemaVersion: 1,
+          schemaVersion: 2,
           activeConnectorId: "openai-main",
           connectors: [
             {
@@ -214,7 +214,7 @@ describe("connectors", () => {
     try {
       await saveConnectorCatalog(
         {
-          schemaVersion: 1,
+          schemaVersion: 2,
           activeConnectorId: "openai-main",
           connectors: []
         },
@@ -240,7 +240,7 @@ describe("connectors", () => {
     try {
       await saveConnectorCatalog(
         {
-          schemaVersion: 1,
+          schemaVersion: 2,
           activeConnectorId: "gemini-env",
           connectors: []
         },
@@ -268,7 +268,7 @@ describe("connectors", () => {
     try {
       await saveConnectorCatalog(
         {
-          schemaVersion: 1,
+          schemaVersion: 2,
           activeConnectorId: "gemini-env",
           connectors: []
         },
@@ -296,7 +296,7 @@ describe("connectors", () => {
     try {
       await saveConnectorCatalog(
         {
-          schemaVersion: 1,
+          schemaVersion: 2,
           activeConnectorId: "gemini-env",
           connectors: [
             {
@@ -337,7 +337,7 @@ describe("connectors", () => {
     try {
       await saveConnectorCatalog(
         {
-          schemaVersion: 1,
+          schemaVersion: 2,
           activeConnectorId: "openai-main",
           connectors: [
             {
@@ -374,7 +374,7 @@ describe("connectors", () => {
     try {
       await saveConnectorCatalog(
         {
-          schemaVersion: 1,
+          schemaVersion: 2,
           activeConnectorId: "openai-oauth",
           connectors: [
             {
@@ -415,7 +415,7 @@ describe("connectors", () => {
     try {
       await saveConnectorCatalog(
         {
-          schemaVersion: 1,
+          schemaVersion: 2,
           connectors: [
             {
               id: "openai-oauth",

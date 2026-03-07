@@ -41,7 +41,7 @@ Development gates:
 
 ```bash
 bun run verify:offline
-RUN_LIVE_PROVIDER_TESTS=1 bun run verify:live
+RUN_LIVE_PROVIDER_TESTS=1 bun run verify:live -- --profile smoke gemini
 ```
 
 ## Connector Model
@@ -53,21 +53,21 @@ Live execution is connector-first.
 - Environment-backed connectors are discovered ephemerally from exported keys and appear as `gemini-env`, `kimi-env`, and `openai-env`
 - The active connector persists until changed with `connector use` or another `auth login --use`
 - Blocked connectors can be recorded in the catalog for planned-but-not-runnable auth methods; they are visible in `auth status` and `connector list` but are never selected for live execution
+- Hard-gated live execution only uses stored connectors with fresh certification evidence; env-backed connectors remain visible for inspection but must be stored before live execution or certification
 
 Execution resolution order for `run` and `benchmark`:
 
 1. explicit `--connector <id>`
 2. active connector from `.multi-agent-framework/connectors.json`
-3. exactly one env-backed connector
-4. mock fallback when execution mode is `auto`
+3. mock fallback when execution mode is `auto`
 
-If multiple live env connectors are present and none is selected, the CLI fails fast and asks you to choose one.
+`run --execution-mode live|auto` will not promote env-backed connectors into live execution. Store them first with `auth login`, then certify them.
 
 ## Execution Modes
 
 - `mock`: always use deterministic mock providers
 - `live`: require a resolved live connector
-- `auto`: use the selected live connector when available, otherwise fall back to mock
+- `auto`: use the selected stored live connector when available, otherwise fall back to mock
 
 `--provider-mode` is still accepted as a backward-compatible alias for `--execution-mode`.
 
@@ -125,7 +125,8 @@ This will:
 - prompt for the API key
 - write connector metadata to `.multi-agent-framework/connectors.json`
 - store the secret in the OS credential store
-- certify the connector immediately unless `--no-certify` is supplied
+- run an auth-only smoke check unless `--no-certify` is supplied
+- leave full live certification pending until you run `auth certify --profile full`
 
 Create and select an OpenAI ChatGPT OAuth connector:
 
@@ -139,7 +140,8 @@ This will:
 - open a browser login URL when needed
 - use the current `codex app-server` default model unless `--model` is supplied
 - store only non-secret connector metadata in `.multi-agent-framework/connectors.json`
-- certify the connector immediately unless `--no-certify` is supplied
+- run an auth-only smoke check unless `--no-certify` is supplied
+- leave full live certification pending until you run `auth certify --profile full`
 
 Check current status:
 
@@ -147,10 +149,16 @@ Check current status:
 bun run start -- auth status
 ```
 
-Recertify the current connector and persist a smoke-test artifact:
+Run the quick smoke profile:
 
 ```bash
-bun run start -- auth certify --output-dir ./runs/auth
+bun run start -- auth certify --profile smoke --output-dir ./runs/auth
+```
+
+Run the full certification profile required for unattended live execution:
+
+```bash
+bun run start -- auth certify --profile full --output-dir ./runs/auth
 ```
 
 Switch the active connector without re-entering credentials:
@@ -159,29 +167,33 @@ Switch the active connector without re-entering credentials:
 bun run start -- connector use --connector kimi-main
 ```
 
-Environment-backed connectors remain ephemeral. You can run against `gemini-env`, `kimi-env`, or `openai-env` explicitly, but `connector use` only persists stored connectors created with `auth login`.
+Environment-backed connectors remain ephemeral. `connector use`, `auth certify`, and hard-gated live `run`/`benchmark` flows only operate on stored connectors created with `auth login`.
 
 ## Live Verification
 
-Run the env-gated live smoke tests with:
+Run the layered live-certification orchestrator with:
 
 ```bash
-RUN_LIVE_PROVIDER_TESTS=1 bun run verify:live
+RUN_LIVE_PROVIDER_TESTS=1 bun run verify:live -- --profile smoke
 ```
 
-The script runs Gemini, OpenAI ChatGPT OAuth, and Kimi smoke tests individually and prints a pass/fail/skipped result for each provider. You can also limit the run to a subset:
+The script logs into provider connectors in an isolated state directory, runs `auth certify`, reads the resulting certification manifests, and prints a `pass` / `fail` / `skip` / `stale` summary for each provider. You can also limit the run to a subset:
 
 ```bash
-RUN_LIVE_PROVIDER_TESTS=1 bun run verify:live -- gemini
+RUN_LIVE_PROVIDER_TESTS=1 bun run verify:live -- --profile smoke gemini
 ```
 
 Expected behavior:
 
-- Gemini passes only when `GEMINI_API_KEY` is set and valid.
-- OpenAI passes only in a local environment with `codex app-server` installed and an authenticated ChatGPT browser session.
-- Kimi passes only with a valid Moonshot platform API key from `platform.moonshot.cn`.
+- Gemini reports `passed` only when the selected profile succeeds and prior benchmark evidence is still fresh.
+- OpenAI reports `passed` only in a local or self-hosted environment with `codex app-server` installed and an authenticated ChatGPT browser session.
+- Kimi reports `passed` only with a valid Moonshot platform API key from `platform.moonshot.cn`.
+- A smoke run can report `stale` when the quick checks pass but no fresh benchmark layer exists yet.
 
-The nightly GitHub Actions workflow runs `bun run verify:offline` plus Gemini live smoke only. OpenAI ChatGPT OAuth and Kimi are intentionally skipped in CI because those credentials are not suitable for a headless shared runner.
+GitHub Actions coverage is split:
+
+- `.github/workflows/verify-live.yml` runs `bun run verify:offline` plus Gemini and Kimi certification on GitHub-hosted Ubuntu runners
+- `.github/workflows/verify-openai-oauth.yml` is a manual self-hosted macOS workflow for OpenAI ChatGPT OAuth certification
 
 ## Run Semantics
 
@@ -198,6 +210,13 @@ The nightly GitHub Actions workflow runs `bun run verify:offline` plus Gemini li
 
 In live or auto mode, the selected connector rewrites every adapter agent to the chosen provider and default model unless you override the model explicitly with `--model`.
 
+Live execution is hard-gated. A stored connector must have:
+
+- fresh `auth`, `provider`, and `run` smoke layers from the last 24 hours
+- a passing `benchmark` layer from the last 7 days
+
+If a connector is missing or stale on any required layer, `run` exits with remediation that points to `auth certify --profile smoke` or `auth certify --profile full`.
+
 Example:
 
 ```bash
@@ -211,6 +230,7 @@ bun run start -- run --adapter-id general-debate --topic "Should teams default t
 - `v02-benchmark-<timestamp>.json`: top-level report
 - `transcripts/`: transcript JSON per scenario
 - `debug/`: debug artifacts for failed or non-actionable scenarios
+- `certification/`: connector-level benchmark manifests and cross-connector certification index files for live runs
 
 Report fields include:
 
@@ -234,8 +254,8 @@ Report fields include:
 By default:
 
 - `benchmark` in `mock` or mock-resolved `auto` mode stays in `baseline`
-- `benchmark` in live mode certifies only the resolved connector
-- `benchmark --all-connectors` runs the same matrix across every configured live connector and records skipped blocked/non-runnable connectors in the report
+- `benchmark` in live mode updates the resolved stored connector’s `benchmark` certification layer and writes a connector manifest
+- `benchmark --all-connectors` runs the same matrix across every stored live connector and records skipped blocked/env-backed/non-runnable connectors in both the report and the certification index
 
 Token budget is reported separately from actionability:
 
@@ -293,6 +313,7 @@ Connector-backed live run:
 
 ```bash
 bun run start -- auth login --provider openai --method api-key --use
+bun run start -- auth certify --profile full --connector openai-main
 bun run start -- run --adapter-id general-debate --topic "Should teams default to async communication?"
 ```
 
@@ -300,6 +321,7 @@ Connector-backed live run with ChatGPT OAuth:
 
 ```bash
 bun run start -- auth login --provider openai --method chatgpt-oauth --use
+bun run start -- auth certify --profile full --connector openai-oauth
 bun run start -- run --adapter-id general-debate --topic "Should teams default to async communication?"
 ```
 
@@ -325,7 +347,7 @@ bun run start -- benchmark --execution-mode live --all-connectors --output-dir .
 
 - OpenAI ChatGPT OAuth depends on a working local `codex app-server` installation and an interactive browser-capable login environment.
 - `claude` remains a recognized provider id but is intentionally unsupported for live execution because many users only have `claude.ai` subscription access, while API-key execution would require a separate Anthropic billing relationship.
-- Kimi is implemented but still marked uncertified until it is exercised with a valid Moonshot platform API key from `platform.moonshot.cn`.
+- Kimi live certification requires a Moonshot platform API key from `platform.moonshot.cn`; consumer Kimi CLI/session credentials are not sufficient.
 - Top-level orchestrator execution remains `sequential` only. Use phase-level `fanout` for the supported concurrency model.
 - `visibilityPolicy.participants` is a symmetric allowlist for both send and receive visibility in this pass.
 - Live certification still depends on external provider health, quotas, and credentials.

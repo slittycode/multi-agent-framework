@@ -6,101 +6,313 @@ const KEY_WILDCARD = "*";
 const KEY_SEPARATOR = "::";
 const DEFAULT_TOPIC = "the current topic";
 
+type MockTurnMode = "measured" | "questioning" | "compressed";
+type MockVerdictMode = "firm" | "soft" | "omit";
+type MockSummaryMode = "balanced" | "partial" | "open";
+type MockOverlapMode = "none" | "light" | "strong";
+
+interface MockWeaknessProfile {
+  id: string;
+  turnMode: MockTurnMode;
+  includeTurnCitation: boolean;
+  verdictMode: MockVerdictMode;
+  summaryMode: MockSummaryMode;
+  recommendationOverlap: MockOverlapMode;
+  prioritizedRecommendationCount: 0 | 1 | 2 | 3;
+  actionableRecommendationCount: 0 | 1 | 2 | 3;
+  citationBudget: 0 | 1;
+  judgeDirectiveCount: 0 | 1;
+  judgeBaseScore: number;
+}
+
 interface MockDomainProfile {
-  focusAreas: readonly string[];
-  concerns: readonly string[];
-  evidencePoints: readonly string[];
-  outcomeSignals: readonly string[];
-  summaryAngles: readonly string[];
+  adapterId: "general-debate" | "creative-writing" | "ableton-feedback";
+  turnFocusAreas: readonly string[];
+  turnObservations: readonly string[];
+  turnConcerns: readonly string[];
+  turnNudges: readonly string[];
+  synthesisFrames: readonly string[];
+  synthesisLessons: readonly string[];
+  synthesisRisks: readonly string[];
+  recommendationTargets: readonly string[];
+  actionOpeners: readonly string[];
+  softOpeners: readonly string[];
+  variants: readonly MockWeaknessProfile[];
 }
 
 const GENERAL_PROFILE: MockDomainProfile = {
-  focusAreas: [
-    "the decision criteria",
-    "the operating constraints",
-    "the rollout trade-offs",
-    "the risk and learning loop"
+  adapterId: "general-debate",
+  turnFocusAreas: [
+    "the working decision rule",
+    "the rollout boundary",
+    "the accountability check",
+    "the operating trade-off"
   ],
-  concerns: [
-    "unowned execution details",
-    "missing escalation paths",
-    "assumptions that have not been tested",
-    "unclear measures of success"
+  turnObservations: [
+    "the last turn names a workable condition instead of a slogan",
+    "the argument gets more useful once it narrows to operating choices",
+    "the exchange is strongest when it stops arguing preferences and starts naming constraints"
   ],
-  evidencePoints: [
-    "The prior turns already point to concrete operating constraints instead of abstract preferences",
-    "Both sides are grounding their claims in execution mechanics rather than slogans",
-    "The transcript shows where the practical friction will surface first"
+  turnConcerns: [
+    "ownership is still diffuse",
+    "the exception path is missing",
+    "the success signal is still vague",
+    "the trade-off is only implied"
   ],
-  outcomeSignals: [
-    "That makes the next decision easier to sequence and verify",
-    "This keeps the recommendation tied to observable outcomes",
-    "It turns the debate into an execution plan instead of a rhetorical summary"
+  turnNudges: [
+    "The next reply should narrow the scope instead of broadening the claim.",
+    "The next turn needs one concrete checkpoint, not a broader defense.",
+    "A tighter answer would name who carries the risk if the plan slips."
   ],
-  summaryAngles: [
-    "agreement on what to operationalize first",
-    "the unresolved risk that still needs ownership",
-    "the highest-leverage next step"
+  synthesisFrames: [
+    "a workable default",
+    "the first decision checkpoint",
+    "the narrowest useful policy",
+    "a review boundary the team can actually use"
+  ],
+  synthesisLessons: [
+    "The useful part of the transcript is the shape of the choice, not a complete operating plan",
+    "It reads more like a decent briefing than a settled recommendation",
+    "The discussion is actionable only once someone turns the preferred direction into a named checkpoint"
+  ],
+  synthesisRisks: [
+    "edge cases are still unowned",
+    "the measurement plan is still thin",
+    "the fallback path is still underspecified",
+    "the success criteria still blur together"
+  ],
+  recommendationTargets: [
+    "the rollout check",
+    "the decision log",
+    "the exception path",
+    "the success measure"
+  ],
+  actionOpeners: ["Define", "Document", "Review", "Track"],
+  softOpeners: ["Keep", "Use", "Carry", "Watch"],
+  variants: [
+    {
+      id: "debate-balanced",
+      turnMode: "measured",
+      includeTurnCitation: true,
+      verdictMode: "soft",
+      summaryMode: "balanced",
+      recommendationOverlap: "strong",
+      prioritizedRecommendationCount: 2,
+      actionableRecommendationCount: 1,
+      citationBudget: 1,
+      judgeDirectiveCount: 1,
+      judgeBaseScore: 61
+    },
+    {
+      id: "debate-open",
+      turnMode: "questioning",
+      includeTurnCitation: false,
+      verdictMode: "omit",
+      summaryMode: "open",
+      recommendationOverlap: "strong",
+      prioritizedRecommendationCount: 2,
+      actionableRecommendationCount: 1,
+      citationBudget: 0,
+      judgeDirectiveCount: 1,
+      judgeBaseScore: 58
+    },
+    {
+      id: "debate-soft-checkpoint",
+      turnMode: "measured",
+      includeTurnCitation: false,
+      verdictMode: "soft",
+      summaryMode: "partial",
+      recommendationOverlap: "strong",
+      prioritizedRecommendationCount: 2,
+      actionableRecommendationCount: 1,
+      citationBudget: 0,
+      judgeDirectiveCount: 1,
+      judgeBaseScore: 60
+    }
   ]
 };
 
 const CREATIVE_WRITING_PROFILE: MockDomainProfile = {
-  focusAreas: [
-    "scene architecture and pacing",
-    "voice consistency and sentence rhythm",
-    "clarity of character motivation",
-    "stakes and emotional escalation"
+  adapterId: "creative-writing",
+  turnFocusAreas: [
+    "the pressure inside the scene",
+    "the motive line",
+    "the pacing of the reveal",
+    "the voice on the page"
   ],
-  concerns: [
-    "blurred point of view",
-    "a reveal that lands before tension has built",
-    "revision notes that stay generic instead of page-level",
-    "a conflict arc that resolves without enough pressure"
+  turnObservations: [
+    "the note lands best when it points to a line-level revision",
+    "the discussion gets clearer when it separates reader effect from author intent",
+    "the strongest critique is the part that identifies where the page loses pressure"
   ],
-  evidencePoints: [
-    "The transcript keeps returning to revision moves the writer can actually execute on the page",
-    "The strongest comments connect language choices to reader comprehension and momentum",
-    "The draft feedback is most persuasive when it ties voice decisions to scene function"
+  turnConcerns: [
+    "the revision target is still too broad",
+    "the emotional turn arrives before the pressure builds",
+    "point of view slips in the middle",
+    "the draft explains instead of dramatising"
   ],
-  outcomeSignals: [
-    "That produces a clearer rewrite target for the next draft",
-    "It gives the author a revision order instead of a pile of disconnected notes",
-    "It preserves intent while narrowing the next rewrite pass"
+  turnNudges: [
+    "The next reply should point to one rewrite move instead of a general reminder.",
+    "A sharper answer would choose whether voice or structure gets revised first.",
+    "The next turn should protect what is already working instead of rewriting everything."
   ],
-  summaryAngles: [
-    "where the draft is already compelling",
-    "which revision pass should happen first",
-    "the unresolved tension between voice and structure"
+  synthesisFrames: [
+    "the next revision pass",
+    "the clearest reader signal",
+    "the part of the draft worth preserving",
+    "the narrowest rewrite target"
+  ],
+  synthesisLessons: [
+    "The transcript is useful as revision guidance, not as a full editorial diagnosis",
+    "It identifies where the draft wobbles, but not every note is equally actionable on the page",
+    "The discussion settles direction better than it settles sequence"
+  ],
+  synthesisRisks: [
+    "the rewrite could flatten the voice",
+    "the scene order is still doing too much work",
+    "the conflict remains under-pressured",
+    "the reader payoff is still delayed"
+  ],
+  recommendationTargets: [
+    "the opening page",
+    "the reveal scene",
+    "the point-of-view handoff",
+    "the order of revision passes"
+  ],
+  actionOpeners: ["Review", "Track", "Document"],
+  softOpeners: ["Keep", "Let", "Use", "Carry"],
+  variants: [
+    {
+      id: "revision-notes",
+      turnMode: "compressed",
+      includeTurnCitation: false,
+      verdictMode: "omit",
+      summaryMode: "partial",
+      recommendationOverlap: "strong",
+      prioritizedRecommendationCount: 1,
+      actionableRecommendationCount: 0,
+      citationBudget: 0,
+      judgeDirectiveCount: 1,
+      judgeBaseScore: 57
+    },
+    {
+      id: "voice-structure-split",
+      turnMode: "questioning",
+      includeTurnCitation: false,
+      verdictMode: "soft",
+      summaryMode: "balanced",
+      recommendationOverlap: "strong",
+      prioritizedRecommendationCount: 2,
+      actionableRecommendationCount: 0,
+      citationBudget: 0,
+      judgeDirectiveCount: 1,
+      judgeBaseScore: 58
+    },
+    {
+      id: "page-level-pass",
+      turnMode: "measured",
+      includeTurnCitation: false,
+      verdictMode: "soft",
+      summaryMode: "partial",
+      recommendationOverlap: "strong",
+      prioritizedRecommendationCount: 2,
+      actionableRecommendationCount: 2,
+      citationBudget: 0,
+      judgeDirectiveCount: 1,
+      judgeBaseScore: 59
+    }
   ]
 };
 
 const ABLETON_PROFILE: MockDomainProfile = {
-  focusAreas: [
-    "low-end definition and groove clarity",
-    "arrangement pacing and contrast",
-    "space, tension, and release",
-    "translation across sections and playback systems"
+  adapterId: "ableton-feedback",
+  turnFocusAreas: [
+    "the front-to-back energy curve",
+    "the low-mid pocket",
+    "the moment before the payoff",
+    "the contrast between sections"
   ],
-  concerns: [
-    "masking in the low mids",
-    "a drop that arrives without enough contrast",
-    "energy that plateaus because transitions stay dense",
-    "emotional payoff getting buried by technical clutter"
+  turnObservations: [
+    "the feedback is most convincing when it points to where the section loses lift",
+    "the session notes get useful once they separate feel from engineering detail",
+    "the strongest comments describe what changes in momentum, not just what sounds dense"
   ],
-  evidencePoints: [
-    "The prior turns keep linking emotional impact to concrete mix and arrangement moves",
-    "The strongest arguments connect spacing decisions to how the hook or groove actually lands",
-    "The transcript is already specific about where the track gains or loses momentum"
+  turnConcerns: [
+    "the chorus still arrives without enough contrast",
+    "the low mids are doing too much of the work",
+    "the arrangement keeps the same density for too long",
+    "the emotional payoff is described more than located"
   ],
-  outcomeSignals: [
-    "That gives the producer an order of operations for the next session",
-    "It keeps the feedback tied to audible changes instead of taste alone",
-    "It turns broad critique into a repeatable production checklist"
+  turnNudges: [
+    "The next reply should isolate one section before suggesting a full-session rewrite.",
+    "A tighter answer would choose whether the problem is momentum or masking.",
+    "The next turn needs one audible checkpoint instead of another broad taste statement."
   ],
-  summaryAngles: [
-    "what the mix should emphasize first",
-    "where space creates payoff",
-    "which section needs the clearest revision pass"
+  synthesisFrames: [
+    "the next session priority",
+    "the clearest energy checkpoint",
+    "the smallest change that could open the track up",
+    "the part of the arrangement that wants another pass"
+  ],
+  synthesisLessons: [
+    "The discussion sounds like usable session notes, but it does not fully settle order of operations",
+    "It captures what feels off more clearly than it proves why it is off",
+    "The transcript identifies the pressure point, but not a complete production strategy"
+  ],
+  synthesisRisks: [
+    "the fix could trade punch for space",
+    "the transition problem is still loosely described",
+    "the next pass could over-correct the groove",
+    "the mix notes still overlap with arrangement notes"
+  ],
+  recommendationTargets: [
+    "the intro-to-drop handoff",
+    "the low-mid cleanup",
+    "the contrast before the hook",
+    "the first fifteen seconds after the payoff"
+  ],
+  actionOpeners: ["Review", "Track", "Measure"],
+  softOpeners: ["Keep", "Use", "Try", "Watch"],
+  variants: [
+    {
+      id: "session-notes",
+      turnMode: "compressed",
+      includeTurnCitation: false,
+      verdictMode: "omit",
+      summaryMode: "partial",
+      recommendationOverlap: "strong",
+      prioritizedRecommendationCount: 0,
+      actionableRecommendationCount: 0,
+      citationBudget: 0,
+      judgeDirectiveCount: 0,
+      judgeBaseScore: 55
+    },
+    {
+      id: "mix-pass",
+      turnMode: "questioning",
+      includeTurnCitation: false,
+      verdictMode: "omit",
+      summaryMode: "open",
+      recommendationOverlap: "strong",
+      prioritizedRecommendationCount: 0,
+      actionableRecommendationCount: 0,
+      citationBudget: 0,
+      judgeDirectiveCount: 1,
+      judgeBaseScore: 56
+    },
+    {
+      id: "arrangement-pass",
+      turnMode: "measured",
+      includeTurnCitation: false,
+      verdictMode: "soft",
+      summaryMode: "partial",
+      recommendationOverlap: "strong",
+      prioritizedRecommendationCount: 1,
+      actionableRecommendationCount: 0,
+      citationBudget: 0,
+      judgeDirectiveCount: 1,
+      judgeBaseScore: 57
+    }
   ]
 };
 
@@ -194,75 +406,169 @@ function getDomainProfile(request: ProviderGenerateRequest, topic: string): Mock
 }
 
 function buildTranscriptRefs(request: ProviderGenerateRequest, limit = 2): string[] {
-  return request.transcript
-    .slice(-limit)
-    .map((message) => `[T${message.turnIndex}]`);
+  return request.transcript.slice(-limit).map((message) => `[T${message.turnIndex}]`);
 }
 
 function buildTopicFragment(topic: string): string {
   return normalizeWhitespace(topic.replace(/[?.!]+$/u, ""));
 }
 
+function getScenarioHash(request: ProviderGenerateRequest, topic: string): number {
+  return stableHash([getAdapterId(request) ?? "unknown", topic].join("|"));
+}
+
+function getWeaknessProfile(profile: MockDomainProfile, scenarioHash: number): MockWeaknessProfile {
+  return pickDeterministic(profile.variants, scenarioHash);
+}
+
+function appendRefIfNeeded(value: string, ref: string | undefined, includeRef: boolean): string {
+  return includeRef && ref ? `${value} ${ref}` : value;
+}
+
 function buildAgentTurnFallback(
   request: ProviderGenerateRequest,
   hash: number,
   topic: string,
-  profile: MockDomainProfile
+  profile: MockDomainProfile,
+  weakness: MockWeaknessProfile
 ): string {
   const refs = buildTranscriptRefs(request, 2);
   const latestMessage = request.transcript.at(-1);
   const latestRef = refs.at(-1);
+  const topicFragment = buildTopicFragment(topic);
+  const focusArea = pickDeterministic(profile.turnFocusAreas, hash);
+  const observation = pickDeterministic(profile.turnObservations, hash, 1);
+  const concern = pickDeterministic(profile.turnConcerns, hash, 2);
+  const nudge = pickDeterministic(profile.turnNudges, hash, 3);
   const phaseId = request.phaseId ?? request.messageKind ?? "turn";
-  const phaseAction =
-    phaseId === "challenge"
-      ? "stress-test"
-      : phaseId === "rebuttal"
-        ? "tighten"
-        : "frame";
-  const focusArea = pickDeterministic(profile.focusAreas, hash);
-  const concern = pickDeterministic(profile.concerns, hash, 1);
-  const evidencePoint = pickDeterministic(profile.evidencePoints, hash, 2);
-  const outcomeSignal = pickDeterministic(profile.outcomeSignals, hash, 3);
-  const responseLead = latestMessage
-    ? `${request.agent.name} uses ${latestMessage.from}'s earlier point`
-    : `${request.agent.name} opens by centering`;
-  const citationTail = latestRef ? ` ${latestRef}` : "";
+  const citeTurn = weakness.includeTurnCitation && phaseId !== "opening";
+  const leadRef = citeTurn ? latestRef : undefined;
 
-  return [
-    `Claim: ${responseLead} to ${phaseAction} ${focusArea} for ${buildTopicFragment(topic)}${citationTail}.`,
-    `Counterpoint: The transcript still leaves ${concern} exposed, so the next reply should name the trade-off directly${latestRef ? ` and close the gap raised in ${latestRef}` : ""}.`,
-    `Evidence: ${evidencePoint}. ${outcomeSignal}.`
-  ].join("\n");
+  let firstSentence: string;
+  let secondSentence: string | undefined;
+
+  if (phaseId === "challenge") {
+    firstSentence = appendRefIfNeeded(
+      `${request.agent.name} pushes on ${concern} and says the last turn reaches for ${focusArea} before it proves it`,
+      leadRef,
+      true
+    );
+    secondSentence =
+      weakness.turnMode === "compressed"
+        ? "That leaves the critique directionally right but still under-argued."
+        : nudge;
+  } else if (phaseId === "rebuttal") {
+    firstSentence = appendRefIfNeeded(
+      `${request.agent.name} narrows the point to ${focusArea}, arguing that ${observation.toLowerCase()}`,
+      leadRef,
+      true
+    );
+    secondSentence =
+      weakness.turnMode === "questioning"
+        ? `It still does not fully answer why ${concern}.`
+        : `The reply is more usable now, although ${concern}.`;
+  } else {
+    const latestSpeaker = latestMessage ? latestMessage.from : "the topic";
+    firstSentence = appendRefIfNeeded(
+      `${request.agent.name} opens on ${focusArea} for ${topicFragment} and takes ${latestSpeaker === "the topic" ? "the prompt" : latestSpeaker}'s framing as a starting point`,
+      leadRef,
+      true
+    );
+    secondSentence =
+      weakness.turnMode === "compressed"
+        ? `${observation}.`
+        : `${observation}. ${concern.charAt(0).toUpperCase() + concern.slice(1)}.`;
+  }
+
+  return normalizeWhitespace([`${firstSentence}.`, secondSentence].filter(Boolean).join(" "));
 }
 
 function buildJudgeFallback(
   request: ProviderGenerateRequest,
   hash: number,
   topic: string,
-  profile: MockDomainProfile
+  profile: MockDomainProfile,
+  weakness: MockWeaknessProfile
 ): string {
   const refs = buildTranscriptRefs(request, 2);
   const latestRef = refs.at(-1);
-  const score = 62 + (hash % 15);
-  const rationale = `The discussion is progressing, but ${pickDeterministic(
-    profile.concerns,
-    hash
-  )} still needs to be resolved before a final answer is trustworthy${latestRef ? ` ${latestRef}` : ""}.`;
+  const rationale = appendRefIfNeeded(
+    `The round is useful, but ${pickDeterministic(profile.turnConcerns, hash)} still blocks a confident synthesis`,
+    latestRef,
+    Boolean(latestRef)
+  );
+  const score = weakness.judgeBaseScore + (hash % 6);
 
   return JSON.stringify({
     finished: false,
-    rationale,
+    rationale: `${rationale}.`,
     score,
     rubric: {
-      specificity: score + 4,
-      rebuttalQuality: score - 1,
-      evidenceQuality: score + 2,
-      synthesisUtility: score + 3
+      specificity: score + 2,
+      rebuttalQuality: score - 2,
+      evidenceQuality: score - 1,
+      synthesisUtility: score + 1
     },
-    steeringDirectives: [
-      `Name the highest-risk assumption for ${buildTopicFragment(topic)} and tie it to a concrete mitigation.`,
-      `Convert the next turn into a sharper decision point around ${pickDeterministic(profile.focusAreas, hash, 1)}${latestRef ? ` with explicit reference to ${latestRef}` : ""}.`
-    ]
+    steeringDirectives:
+      weakness.judgeDirectiveCount === 0
+        ? []
+        : [
+            `Name one concrete next check for ${buildTopicFragment(topic)} instead of broadening the recommendation.`
+          ]
+  });
+}
+
+function buildRecommendation(
+  profile: MockDomainProfile,
+  weakness: MockWeaknessProfile,
+  hash: number,
+  topicFragment: string,
+  refs: string[]
+): Array<{ text: string; priority?: "high" | "medium" | "low" }> {
+  const firstTarget = pickDeterministic(profile.recommendationTargets, hash);
+  const secondTarget =
+    weakness.recommendationOverlap !== "none"
+      ? firstTarget
+      : pickDeterministic(profile.recommendationTargets, hash, 1);
+  const thirdTarget = pickDeterministic(profile.recommendationTargets, hash, 2);
+  const firstRisk = pickDeterministic(profile.synthesisRisks, hash, 1);
+  const secondRisk = pickDeterministic(profile.synthesisRisks, hash, 2);
+  const thirdRisk = pickDeterministic(profile.synthesisRisks, hash, 3);
+  const citationRef = weakness.citationBudget > 0 ? refs[0] : undefined;
+
+  const targets = [firstTarget, secondTarget, thirdTarget];
+  const risks = [firstRisk, secondRisk, thirdRisk];
+  const firstAction = pickDeterministic(profile.actionOpeners, hash);
+  const firstRecommendationText = appendRefIfNeeded(
+    `${firstAction} ${firstTarget} so the next pass on ${topicFragment} stops drifting around ${firstRisk}`,
+    citationRef,
+    Boolean(citationRef)
+  );
+
+  return targets.map((target, index) => {
+    const useActionVerb = index < weakness.actionableRecommendationCount;
+    const opener = useActionVerb
+      ? pickDeterministic(profile.actionOpeners, hash, index)
+      : pickDeterministic(profile.softOpeners, hash, index);
+    const priority =
+      index < weakness.prioritizedRecommendationCount
+        ? (index === 0 ? "high" : index === 1 ? "medium" : "low")
+        : undefined;
+    const risk = risks[index] as string;
+
+    const text =
+      index === 0
+        ? firstRecommendationText
+        : index === 1 && weakness.recommendationOverlap === "strong"
+          ? firstRecommendationText
+          : index === 1 && weakness.recommendationOverlap === "light"
+            ? `${opener} the same ${target} in a narrower pass before changing anything larger`
+            : `${opener} ${index === 1 ? "one checkpoint around" : "the follow-up on"} ${target} and note whether ${risk}`;
+
+    return {
+      text: `${text}.`,
+      priority
+    };
   });
 }
 
@@ -270,40 +576,49 @@ function buildSynthesisFallback(
   request: ProviderGenerateRequest,
   hash: number,
   topic: string,
-  profile: MockDomainProfile
+  profile: MockDomainProfile,
+  weakness: MockWeaknessProfile
 ): string {
   const refs = buildTranscriptRefs(request, 3);
-  const firstRef = refs[0];
-  const secondRef = refs[1] ?? firstRef;
-  const lastRef = refs.at(-1) ?? secondRef;
-  const focusArea = pickDeterministic(profile.focusAreas, hash);
-  const concern = pickDeterministic(profile.concerns, hash, 1);
-  const evidencePoint = pickDeterministic(profile.evidencePoints, hash, 2);
-  const outcomeSignal = pickDeterministic(profile.outcomeSignals, hash, 3);
-  const summaryAngle = pickDeterministic(profile.summaryAngles, hash, 4);
+  const summaryRef = weakness.citationBudget > 0 ? refs.at(0) : undefined;
   const topicFragment = buildTopicFragment(topic);
+  const frame = pickDeterministic(profile.synthesisFrames, hash);
+  const lesson = pickDeterministic(profile.synthesisLessons, hash, 1);
+  const risk = pickDeterministic(profile.synthesisRisks, hash, 2);
+  const summarySentences =
+    weakness.summaryMode === "balanced"
+      ? [
+          appendRefIfNeeded(
+            `The discussion lands on ${frame} for ${topicFragment}, but it never fully closes the loop on ${risk}`,
+            summaryRef,
+            Boolean(summaryRef)
+          ),
+          `${lesson}.`,
+          "That makes the output usable as a next pass, not as a finished answer."
+        ]
+      : weakness.summaryMode === "partial"
+        ? [
+            `The discussion points toward ${frame} for ${topicFragment}, with most of the confidence coming from repeated cues rather than a complete case.`,
+            `${lesson}.`
+          ]
+        : [
+            `The transcript suggests ${frame} for ${topicFragment}, yet the strongest claim still feels inferred more than demonstrated.`,
+            `The unresolved part is ${risk}, so the synthesis can only narrow the next move rather than settle the debate.`
+          ];
+
+  const verdict =
+    weakness.verdictMode === "omit"
+      ? undefined
+      : weakness.verdictMode === "soft"
+        ? `Tentatively lean toward ${frame} for ${topicFragment}, but keep ${risk} open until the next review.`
+        : `Use ${frame} as the working direction for ${topicFragment} and revisit it only if ${risk}.`;
+
+  const recommendations = buildRecommendation(profile, weakness, hash, topicFragment, refs);
 
   return JSON.stringify({
-    summary: [
-      `The discussion converged on ${focusArea} as the main lever for ${topicFragment}, with the strongest supporting evidence surfacing in ${firstRef ?? "[T1]"} and ${secondRef ?? "[T2]"}.`,
-      `${evidencePoint}, so the synthesis prioritizes ${summaryAngle} over broad restatement.`,
-      `The remaining disagreement is about ${concern}, which should be handled explicitly before the team scales the recommendation${lastRef ? ` ${lastRef}` : ""}.`
-    ].join(" "),
-    verdict: `Proceed with a concrete plan for ${topicFragment}, but treat ${concern} as the gating risk and verify it against the transcript evidence${lastRef ? ` ${lastRef}` : ""}.`,
-    recommendations: [
-      {
-        text: `Define the first operating move around ${focusArea} and document who owns ${concern} before the next review${firstRef ? ` ${firstRef}` : ""}.`,
-        priority: "high"
-      },
-      {
-        text: `Review the strongest evidence from the discussion and translate it into one measurable checkpoint for ${topicFragment}${secondRef ? ` ${secondRef}` : ""}.`,
-        priority: "high"
-      },
-      {
-        text: `Track whether the next iteration actually improves ${summaryAngle}; if it does not, update the plan and re-evaluate the trade-off${lastRef ? ` ${lastRef}` : ""}.`,
-        priority: "medium"
-      }
-    ]
+    summary: summarySentences.join(" "),
+    ...(verdict ? { verdict } : {}),
+    recommendations
   });
 }
 
@@ -427,6 +742,9 @@ export class MockProvider implements ProviderClient {
 
   private createDeterministicFallback(request: ProviderGenerateRequest): string {
     const transcriptTail = request.transcript.at(-1)?.content ?? "";
+    const topic = getTopic(request);
+    const scenarioHash = getScenarioHash(request, topic);
+    const weakness = getWeaknessProfile(getDomainProfile(request, topic), scenarioHash);
     const seedSource = [
       request.runId,
       request.agent.id,
@@ -435,21 +753,21 @@ export class MockProvider implements ProviderClient {
       request.messageKind ?? "",
       request.turnIndex?.toString() ?? "",
       request.prompt,
-      transcriptTail
+      transcriptTail,
+      weakness.id
     ].join("|");
 
     const hash = stableHash(seedSource);
-    const topic = getTopic(request);
     const profile = getDomainProfile(request, topic);
 
     if (request.phaseId === "judge") {
-      return buildJudgeFallback(request, hash, topic, profile);
+      return buildJudgeFallback(request, hash, topic, profile, weakness);
     }
 
     if (request.phaseId === "synthesis" || request.messageKind === "synthesis") {
-      return buildSynthesisFallback(request, hash, topic, profile);
+      return buildSynthesisFallback(request, hash, topic, profile, weakness);
     }
 
-    return buildAgentTurnFallback(request, hash, topic, profile);
+    return buildAgentTurnFallback(request, hash, topic, profile, weakness);
   }
 }
