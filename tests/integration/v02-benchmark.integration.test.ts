@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { loadDomainAdapter } from "../../src/adapters/adapter-loader";
 import {
@@ -38,6 +39,7 @@ const BENCHMARK_TOPICS_BY_ADAPTER: Record<BuiltinAdapterId, readonly string[]> =
 
 describe("integration/v02-benchmark", () => {
   runOrSkip("replays built-ins and exports benchmark report", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "maf-test-runs-benchmark-"));
     const reportEntries: Array<{
       adapterId: string;
       topic: string;
@@ -127,24 +129,27 @@ describe("integration/v02-benchmark", () => {
       entries: reportEntries
     };
 
-    const outputDir = resolve(process.cwd(), "runs", "benchmarks");
-    await mkdir(outputDir, { recursive: true });
-    const outputPath = join(outputDir, `v02-benchmark-${Date.now()}.json`);
-    await writeFile(outputPath, JSON.stringify(report, null, 2), "utf8");
+    try {
+      await mkdir(outputDir, { recursive: true });
+      const outputPath = join(outputDir, `v02-benchmark-${Date.now()}.json`);
+      await writeFile(outputPath, JSON.stringify(report, null, 2), "utf8");
 
-    expect(report.meanInputTokens).toBeLessThanOrEqual(TARGET_INPUT_TOKENS);
-    expect(report.evaluationTier).toBe("baseline");
-    expect(report.rubricVersion).toBe(ACTIONABILITY_RUBRIC_VERSION);
-    expect(report.entries.every((entry) => entry.actionability.evaluationTier === "baseline")).toBe(true);
-    expect(report.meanActionabilityScore).toBeGreaterThanOrEqual(58);
-    expect(report.meanActionabilityScore).toBeLessThanOrEqual(67);
-    expect(Math.min(...scores)).toBeGreaterThanOrEqual(55);
-    expect(Math.max(...scores)).toBeLessThanOrEqual(71);
-    expect(Math.max(...scores) - Math.min(...scores)).toBeGreaterThanOrEqual(10);
-    expect(distinctActionabilityScores.size).toBeGreaterThanOrEqual(6);
-    expect(failCount).toBeGreaterThanOrEqual(1);
-    expect(failCount).toBeLessThanOrEqual(3);
-    expect(adapterMeans["general-debate"]).toBeGreaterThan(adapterMeans["creative-writing"]);
-    expect(adapterMeans["creative-writing"]).toBeGreaterThan(adapterMeans["ableton-feedback"]);
+      expect(report.meanInputTokens).toBeLessThanOrEqual(TARGET_INPUT_TOKENS);
+      expect(report.evaluationTier).toBe("baseline");
+      expect(report.rubricVersion).toBe(ACTIONABILITY_RUBRIC_VERSION);
+      expect(report.entries.every((entry) => entry.actionability.evaluationTier === "baseline")).toBe(true);
+      expect(report.meanActionabilityScore).toBeGreaterThanOrEqual(58);
+      expect(report.meanActionabilityScore).toBeLessThanOrEqual(67);
+      expect(Math.min(...scores)).toBeGreaterThanOrEqual(55);
+      expect(Math.max(...scores)).toBeLessThanOrEqual(71);
+      expect(Math.max(...scores) - Math.min(...scores)).toBeGreaterThanOrEqual(10);
+      expect(distinctActionabilityScores.size).toBeGreaterThanOrEqual(6);
+      expect(failCount).toBeGreaterThanOrEqual(1);
+      expect(failCount).toBeLessThanOrEqual(3);
+      expect(adapterMeans["general-debate"]).toBeGreaterThan(adapterMeans["creative-writing"]);
+      expect(adapterMeans["creative-writing"]).toBeGreaterThan(adapterMeans["ableton-feedback"]);
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
   });
 });
