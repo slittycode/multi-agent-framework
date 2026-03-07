@@ -317,10 +317,10 @@ describe("integration/cli-run", () => {
     );
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("No live connector is configured");
+    expect(result.stderr).toContain("No stored live connector is configured");
   });
 
-  test("fails in live mode when connector credentials are rejected by the provider", () => {
+  test("fails in live mode when only an env-backed credential is present", () => {
     const adapterFile = resolve(projectRoot(), "tests/fixtures/adapters/live-openai-adapter.ts");
     const result = runCli(
       [
@@ -336,9 +336,7 @@ describe("integration/cli-run", () => {
     );
 
     expect(result.exitCode).toBe(1);
-    expect(result.stdout).toContain("Provider Support:");
-    expect(result.stdout).toContain("openai");
-    expect(result.stderr).toContain("PROVIDER_AUTH_FAILED");
+    expect(result.stderr).toContain("No stored live connector is configured");
   });
 
   test("falls back to mock in auto mode when no live connector is configured", () => {
@@ -361,7 +359,7 @@ describe("integration/cli-run", () => {
     expect(result.stdout).toContain("Evaluation Tier: baseline");
   });
 
-  test("uses the env connector in auto mode and surfaces auth failure when credentials are rejected", () => {
+  test("auto mode ignores env-backed connectors for live execution and stays in mock mode", () => {
     const adapterFile = resolve(projectRoot(), "tests/fixtures/adapters/live-openai-adapter.ts");
     const result = runCli(
       [
@@ -376,12 +374,12 @@ describe("integration/cli-run", () => {
       { OPENAI_API_KEY: "test-key" }
     );
 
-    expect(result.exitCode).toBe(1);
-    expect(result.stdout).toContain("Resolved Execution Mode: live");
-    expect(result.stderr).toContain("PROVIDER_AUTH_FAILED");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Resolved Execution Mode: mock");
+    expect(result.stdout).toContain("Evaluation Tier: baseline");
   });
 
-  test("uses the active stored connector in auto mode until changed", async () => {
+  test("fails in auto mode when the active stored connector has not completed full certification", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "maf-cli-active-connector-"));
     const credentialFile = join(stateDir, "credentials.json");
     const adapterFile = resolve(projectRoot(), "tests/fixtures/adapters/live-openai-adapter.ts");
@@ -421,16 +419,15 @@ describe("integration/cli-run", () => {
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toContain("Execution Mode: auto");
-      expect(result.stdout).toContain("Resolved Execution Mode: live");
       expect(result.stdout).toContain("Selected Connector: openai-main (openai/keychain)");
       expect(result.stdout).toContain("Active Connector: openai-main");
-      expect(result.stderr).toContain("PROVIDER_AUTH_FAILED");
+      expect(result.stderr).toContain("auth certify --profile smoke");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
   });
 
-  test("ignores a blocked active connector in auto mode and falls back to mock", async () => {
+  test("fails in auto mode when the active connector is blocked", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "maf-cli-blocked-active-"));
     const outputDir = await mkdtemp(join(tmpdir(), "maf-cli-blocked-active-output-"));
 
@@ -476,10 +473,8 @@ describe("integration/cli-run", () => {
         }
       );
 
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("Execution Mode: auto");
-      expect(result.stdout).toContain("Resolved Execution Mode: mock");
-      expect(result.stdout).toContain("Active Connector: openai-oauth");
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("oauth_not_implemented");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
       await rm(outputDir, { recursive: true, force: true });
@@ -567,7 +562,7 @@ describe("integration/cli-run", () => {
     }
   });
 
-  test("benchmark command writes report, prints table, and exits zero when baseline quality passes", async () => {
+  test("benchmark command writes report, prints table, and exits zero with calibrated baseline variation", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "maf-benchmark-cli-"));
 
     try {
@@ -624,11 +619,20 @@ describe("integration/cli-run", () => {
       expect(report.entries).toHaveLength(9);
       expect(report.entries.every((entry) => entry.transcriptPath)).toBe(true);
       expect(report.entries.every((entry) => entry.connectorId === undefined)).toBe(true);
-      expect(report.entries.every((entry) => entry.actionability.passed)).toBe(true);
-      expect(report.entries.every((entry) => !entry.debugArtifactPath)).toBe(true);
+      const scores = report.entries.map((entry) => entry.actionability.score);
+      const failEntries = report.entries.filter((entry) => !entry.actionability.passed);
+      const passEntries = report.entries.filter((entry) => entry.actionability.passed);
+
+      expect(Math.min(...scores)).toBeGreaterThanOrEqual(55);
+      expect(Math.max(...scores)).toBeLessThanOrEqual(71);
+      expect(Math.max(...scores) - Math.min(...scores)).toBeGreaterThanOrEqual(10);
+      expect(failEntries.length).toBeGreaterThanOrEqual(1);
+      expect(failEntries.length).toBeLessThanOrEqual(3);
+      expect(passEntries.every((entry) => !entry.debugArtifactPath)).toBe(true);
+      expect(failEntries.every((entry) => entry.debugArtifactPath)).toBe(true);
 
       const debugEntries = await readdir(join(outputDir, "debug"));
-      expect(debugEntries).toHaveLength(0);
+      expect(debugEntries).toHaveLength(failEntries.length);
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }

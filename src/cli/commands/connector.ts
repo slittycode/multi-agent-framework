@@ -35,9 +35,14 @@ export async function connectorCommand(args: string[]): Promise<number> {
             connector.runtimeStatus === "blocked"
               ? `, status=blocked(${connector.runtimeStatusReason ?? "unknown"})`
               : ", status=ready";
+          const certification = `, cert=${connector.lastCertificationStatus}${
+            connector.liveCertification?.latestProfile
+              ? `:${connector.liveCertification.latestProfile}`
+              : ""
+          }`;
           const tracking = connector.trackedIssueUrl ? `, tracking=${connector.trackedIssueUrl}` : "";
           console.log(
-            `- ${connector.id}${active}: provider=${connector.providerId}, auth=${connector.authMethod}, source=${connector.credentialSource}${ephemeral}, model=${connector.defaultModel}${status}${tracking}`
+            `- ${connector.id}${active}: provider=${connector.providerId}, auth=${connector.authMethod}, source=${connector.credentialSource}${ephemeral}, model=${connector.defaultModel}${status}${certification}${tracking}`
           );
           if (connector.providerNote) {
             console.log(`  provider-note: ${connector.providerNote}`);

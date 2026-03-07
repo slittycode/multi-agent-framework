@@ -102,6 +102,18 @@ describe("integration/v02-benchmark", () => {
     const distinctActionabilityScores = new Set(
       reportEntries.map((entry) => entry.actionability.score.toFixed(2))
     );
+    const scores = reportEntries.map((entry) => entry.actionability.score);
+    const failCount = reportEntries.filter((entry) => !entry.actionability.passed).length;
+    const adapterMeans = Object.fromEntries(
+      BUILTIN_ADAPTER_IDS.map((adapterId) => {
+        const adapterScores = reportEntries
+          .filter((entry) => entry.adapterId === adapterId)
+          .map((entry) => entry.actionability.score);
+        const adapterMean =
+          adapterScores.reduce((total, score) => total + score, 0) / adapterScores.length;
+        return [adapterId, Number(adapterMean.toFixed(2))];
+      })
+    ) as Record<BuiltinAdapterId, number>;
 
     const report = {
       generatedAt: new Date().toISOString(),
@@ -123,8 +135,16 @@ describe("integration/v02-benchmark", () => {
     expect(report.meanInputTokens).toBeLessThanOrEqual(TARGET_INPUT_TOKENS);
     expect(report.evaluationTier).toBe("baseline");
     expect(report.rubricVersion).toBe(ACTIONABILITY_RUBRIC_VERSION);
-    expect(report.entries.every((entry) => entry.actionability.passed)).toBe(true);
     expect(report.entries.every((entry) => entry.actionability.evaluationTier === "baseline")).toBe(true);
-    expect(distinctActionabilityScores.size).toBeGreaterThan(1);
+    expect(report.meanActionabilityScore).toBeGreaterThanOrEqual(58);
+    expect(report.meanActionabilityScore).toBeLessThanOrEqual(67);
+    expect(Math.min(...scores)).toBeGreaterThanOrEqual(55);
+    expect(Math.max(...scores)).toBeLessThanOrEqual(71);
+    expect(Math.max(...scores) - Math.min(...scores)).toBeGreaterThanOrEqual(10);
+    expect(distinctActionabilityScores.size).toBeGreaterThanOrEqual(6);
+    expect(failCount).toBeGreaterThanOrEqual(1);
+    expect(failCount).toBeLessThanOrEqual(3);
+    expect(adapterMeans["general-debate"]).toBeGreaterThan(adapterMeans["creative-writing"]);
+    expect(adapterMeans["creative-writing"]).toBeGreaterThan(adapterMeans["ableton-feedback"]);
   });
 });

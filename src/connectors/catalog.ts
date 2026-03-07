@@ -3,9 +3,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import { describeProviderSupport } from "../providers/provider-support";
+import { normalizeLiveCertification, withUpdatedCertificationSummary } from "./live-certification";
 import type { ConnectorCatalog, ConnectorRecord } from "./types";
 
-const SCHEMA_VERSION = 1 as const;
+const SCHEMA_VERSION = 2 as const;
 
 function emptyCatalog(): ConnectorCatalog {
   return {
@@ -46,10 +47,12 @@ function normalizeConnectorRecord(value: unknown): ConnectorRecord {
       credentialSource !== "keychain" &&
       credentialSource !== "codex-app-server") ||
     typeof credentialRef !== "string" ||
-    (lastCertificationStatus !== "never" &&
+    (lastCertificationStatus !== undefined &&
+      lastCertificationStatus !== "never" &&
       lastCertificationStatus !== "passed" &&
       lastCertificationStatus !== "failed" &&
-      lastCertificationStatus !== "blocked") ||
+      lastCertificationStatus !== "blocked" &&
+      lastCertificationStatus !== "stale") ||
     (runtimeStatus !== undefined && runtimeStatus !== "ready" && runtimeStatus !== "blocked") ||
     (runtimeStatusReason !== undefined &&
       runtimeStatusReason !== "oauth_not_implemented" &&
@@ -61,21 +64,31 @@ function normalizeConnectorRecord(value: unknown): ConnectorRecord {
 
   const normalizedRuntimeStatus = runtimeStatus === "blocked" ? "blocked" : "ready";
 
-  return {
+  return withUpdatedCertificationSummary({
     id,
     providerId,
     authMethod,
     defaultModel,
     credentialSource,
     credentialRef,
-    lastCertificationStatus,
+    lastCertificationStatus:
+      lastCertificationStatus === "stale" ? "stale" : lastCertificationStatus ?? "never",
     runtimeStatus: normalizedRuntimeStatus,
     ...(typeof value.lastCertifiedAt === "string" ? { lastCertifiedAt: value.lastCertifiedAt } : {}),
+    ...(value.liveCertification !== undefined && value.liveCertification !== null
+      ? {
+          liveCertification: normalizeLiveCertification(
+            value.liveCertification,
+            lastCertificationStatus === "stale" ? "stale" : lastCertificationStatus ?? "never",
+            typeof value.lastCertifiedAt === "string" ? value.lastCertifiedAt : undefined
+          )
+        }
+      : {}),
     ...(typeof runtimeStatusReason === "string" ? { runtimeStatusReason } : {}),
     ...(typeof value.trackedIssueUrl === "string" ? { trackedIssueUrl: value.trackedIssueUrl } : {}),
     ...(typeof value.baseURL === "string" ? { baseURL: value.baseURL } : {}),
     ...(typeof providerNote === "string" ? { providerNote } : {})
-  };
+  });
 }
 
 function normalizeCatalog(value: unknown): ConnectorCatalog {
@@ -86,7 +99,7 @@ function normalizeCatalog(value: unknown): ConnectorCatalog {
   const schemaVersion = value.schemaVersion;
   const connectors = value.connectors;
 
-  if (schemaVersion !== SCHEMA_VERSION || !Array.isArray(connectors)) {
+  if ((schemaVersion !== 1 && schemaVersion !== SCHEMA_VERSION) || !Array.isArray(connectors)) {
     throw new Error("Connector catalog has an invalid schema.");
   }
 
@@ -137,6 +150,18 @@ export async function saveConnectorCatalog(
 ): Promise<string> {
   const path = resolveConnectorCatalogPath(input);
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(catalog, null, 2)}\n`, "utf8");
+  await writeFile(
+    path,
+    `${JSON.stringify(
+      {
+        ...catalog,
+        schemaVersion: SCHEMA_VERSION,
+        connectors: catalog.connectors.map((connector) => normalizeConnectorRecord(connector))
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
   return path;
 }

@@ -54,6 +54,10 @@ describe("MockProvider", () => {
   test("returns deterministic fallback content for identical request input", async () => {
     const provider = new MockProvider();
     const request = buildRequest({
+      metadata: {
+        adapterId: "general-debate",
+        topic: "How should teams balance experimentation and reliability?"
+      },
       transcript: [
         buildTranscriptMessage(
           1,
@@ -69,10 +73,10 @@ describe("MockProvider", () => {
     expect(first.provider).toBe("mock");
     expect(first.model).toBe("mock-model-v1");
     expect(first.content).toBe(second.content);
-    expect(first.content).toContain("Claim:");
-    expect(first.content).toContain("Counterpoint:");
-    expect(first.content).toContain("Evidence:");
-    expect(first.content).toContain("[T1]");
+    expect(first.content).not.toContain("Claim:");
+    expect(first.content).not.toContain("Counterpoint:");
+    expect(first.content).not.toContain("Evidence:");
+    expect(first.content.split(/[.!?]/u).filter((segment) => segment.trim().length > 0).length).toBeGreaterThanOrEqual(2);
     expect(first.usage?.inputTokens).toBeGreaterThan(0);
     expect(first.usage?.outputTokens).toBeGreaterThan(0);
   });
@@ -85,6 +89,10 @@ describe("MockProvider", () => {
         agent: { ...baseAgent, id: "judge", role: "judge" },
         phaseId: "judge",
         messageKind: undefined,
+        metadata: {
+          adapterId: "general-debate",
+          topic: "How should teams balance experimentation and reliability?"
+        },
         transcript: [buildTranscriptMessage(1, "Opening argument with concrete claims.", "speaker")]
       })
     );
@@ -99,10 +107,10 @@ describe("MockProvider", () => {
     expect(parsed.finished).toBe(false);
     expect(parsed.rationale).toEqual(expect.any(String));
     expect(parsed.score).toEqual(expect.any(Number));
-    expect(parsed.steeringDirectives).toHaveLength(2);
+    expect((parsed.steeringDirectives ?? []).length).toBeLessThanOrEqual(1);
   });
 
-  test("returns strict JSON fallback for synthesis requests", async () => {
+  test("returns calibrated general-debate synthesis with soft structure and overlapping next steps", async () => {
     const provider = new MockProvider();
 
     const result = await provider.generate(
@@ -110,6 +118,10 @@ describe("MockProvider", () => {
         agent: { ...baseAgent, id: "synth", role: "synthesiser" },
         phaseId: "synthesis",
         messageKind: "synthesis",
+        metadata: {
+          adapterId: "general-debate",
+          topic: "Is remote work better than office work?"
+        },
         transcript: [
           buildTranscriptMessage(
             1,
@@ -131,11 +143,88 @@ describe("MockProvider", () => {
       recommendations?: Array<{ text: string; priority?: string }>;
     };
 
-    expect(parsed.summary.split(/[.!?]/u).filter((segment) => segment.trim().length > 0).length).toBeGreaterThanOrEqual(2);
     expect(parsed.verdict).toEqual(expect.any(String));
     expect(parsed.recommendations).toHaveLength(3);
-    expect(parsed.recommendations?.every((item) => item.priority)).toBe(true);
-    expect(parsed.recommendations?.some((item) => item.text.includes("[T1]"))).toBe(true);
+    expect(parsed.recommendations?.filter((item) => item.priority).length).toBe(2);
+    expect(parsed.recommendations?.[0]?.text).toBe(parsed.recommendations?.[1]?.text);
+  });
+
+  test("returns calibrated creative-writing synthesis with omitted verdict and a single prioritized revision note", async () => {
+    const provider = new MockProvider();
+
+    const result = await provider.generate(
+      buildRequest({
+        agent: { ...baseAgent, id: "synth", role: "synthesiser" },
+        phaseId: "synthesis",
+        messageKind: "synthesis",
+        metadata: {
+          adapterId: "creative-writing",
+          topic: "Write a story about an AI that becomes self-aware"
+        },
+        transcript: [
+          buildTranscriptMessage(
+            1,
+            "The draft has a strong premise, but the reveal lands before the scene has earned enough pressure.",
+            "narrative-voice"
+          ),
+          buildTranscriptMessage(
+            2,
+            "The middle pages explain motivation instead of letting the reader feel the shift in real time.",
+            "structure-editor"
+          )
+        ]
+      })
+    );
+
+    const parsed = JSON.parse(result.content) as {
+      summary: string;
+      verdict?: string;
+      recommendations?: Array<{ text: string; priority?: string }>;
+    };
+
+    expect(parsed.verdict).toBeUndefined();
+    expect(parsed.recommendations).toHaveLength(3);
+    expect(parsed.recommendations?.filter((item) => item.priority).length).toBe(1);
+    expect(parsed.recommendations?.[0]?.text).toBe(parsed.recommendations?.[1]?.text);
+  });
+
+  test("returns calibrated ableton synthesis with unprioritized overlapping next steps", async () => {
+    const provider = new MockProvider();
+
+    const result = await provider.generate(
+      buildRequest({
+        agent: { ...baseAgent, id: "synth", role: "synthesiser" },
+        phaseId: "synthesis",
+        messageKind: "synthesis",
+        metadata: {
+          adapterId: "ableton-feedback",
+          topic: "What is the role of silence and space in electronic music?"
+        },
+        transcript: [
+          buildTranscriptMessage(
+            1,
+            "The arrangement stays dense through the transition, so the drop never feels wider than the build.",
+            "technical-critic"
+          ),
+          buildTranscriptMessage(
+            2,
+            "The hook would land harder if the track left a little more emptiness before it arrives.",
+            "emotional-listener"
+          )
+        ]
+      })
+    );
+
+    const parsed = JSON.parse(result.content) as {
+      summary: string;
+      verdict?: string;
+      recommendations?: Array<{ text: string; priority?: string }>;
+    };
+
+    expect(parsed.verdict).toBeUndefined();
+    expect(parsed.recommendations).toHaveLength(3);
+    expect(parsed.recommendations?.every((item) => item.priority === undefined)).toBe(true);
+    expect(parsed.recommendations?.[0]?.text).toBe(parsed.recommendations?.[1]?.text);
   });
 
   test("uses the most specific canned response key when available", async () => {

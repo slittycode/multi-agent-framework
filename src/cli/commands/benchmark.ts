@@ -2,8 +2,14 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { loadDomainAdapter } from "../../adapters/adapter-loader";
+import {
+  persistCertificationManifest,
+  updateConnectorCertification
+} from "../../connectors/auth-certifier";
 import { applyConnectorToAdapter } from "../../connectors/adapter-override";
+import { loadConnectorCatalog, saveConnectorCatalog } from "../../connectors/catalog";
 import { createCredentialStore } from "../../connectors/credential-store";
+import { BENCHMARK_CERTIFICATION_TTL_MS } from "../../connectors/live-certification";
 import {
   listAvailableConnectors,
   resolveConnectorById,
@@ -27,7 +33,7 @@ import {
 } from "../../providers/provider-bootstrap";
 import type { Transcript } from "../../types";
 
-interface BenchmarkCliOptions {
+export interface BenchmarkCliOptions {
   executionMode: ExecutionMode;
   connectorId?: string;
   allConnectors: boolean;
@@ -67,7 +73,7 @@ interface BenchmarkDebugArtifact {
   actionability: ActionabilityEvaluation;
 }
 
-interface BenchmarkReportEntry {
+export interface BenchmarkReportEntry {
   entryId: string;
   adapterId: string;
   providerId: string;
@@ -84,7 +90,7 @@ interface BenchmarkReportEntry {
   error?: string;
 }
 
-interface BenchmarkReport {
+export interface BenchmarkReport {
   generatedAt: string;
   evaluationTier: ActionabilityEvaluationTier;
   providerMode: ProviderMode;
@@ -103,6 +109,13 @@ interface BenchmarkReport {
   skippedConnectorIds?: string[];
   skippedConnectorReasons?: Record<string, string>;
   entries: BenchmarkReportEntry[];
+}
+
+interface BenchmarkCertificationIndexEntry {
+  connectorId: string;
+  status: "passed" | "failed" | "skipped";
+  manifestPath?: string;
+  reason?: string;
 }
 
 const BASELINE_INPUT_TOKENS = 15357;
@@ -439,6 +452,12 @@ async function buildBenchmarkProfiles(
     const profiles: BenchmarkProviderProfile[] = [];
     const skippedConnectorReasons: Record<string, string> = {};
     for (const connector of available.connectors) {
+      if (connector.ephemeral) {
+        skippedConnectorReasons[connector.id] =
+          "Environment-backed connectors must be stored before live certification.";
+        continue;
+      }
+
       try {
         const resolved = await resolveConnectorById({
           connectorId: connector.id,
@@ -503,6 +522,12 @@ async function buildBenchmarkProfiles(
     };
   }
 
+  if (resolution.connector?.ephemeral) {
+    throw new Error(
+      `Connector "${resolution.connector.id}" is environment-backed. Store it with auth login before live certification.`
+    );
+  }
+
   return {
     activeConnectorId: resolution.activeConnectorId,
     certificationScope: "single_connector",
@@ -527,13 +552,139 @@ function getReportPassStatus(report: BenchmarkReport): boolean {
   }
 
   if (report.evaluationTier === "baseline") {
-    return report.entries.every((entry) => entry.actionability.passed);
+    return report.entries.every((entry) => !entry.error);
   }
 
   return (
     report.providerIds.length > 0 &&
     report.meanActionabilityScore >= LIVE_CERTIFICATION_MEAN_THRESHOLD &&
     report.entries.every((entry) => entry.actionability.score >= LIVE_CERTIFICATION_ENTRY_THRESHOLD)
+  );
+}
+
+function addMs(timestamp: string, durationMs: number): string {
+  return new Date(new Date(timestamp).getTime() + durationMs).toISOString();
+}
+
+function getConnectorBenchmarkPassStatus(entries: BenchmarkReportEntry[]): boolean {
+  if (entries.length === 0) {
+    return false;
+  }
+
+  const meanActionabilityScore =
+    entries.reduce((total, entry) => total + entry.actionability.score, 0) / entries.length;
+  return (
+    meanActionabilityScore >= LIVE_CERTIFICATION_MEAN_THRESHOLD &&
+    entries.every((entry) => !entry.error && entry.actionability.score >= LIVE_CERTIFICATION_ENTRY_THRESHOLD)
+  );
+}
+
+async function persistBenchmarkCertificationMetadata(
+  report: BenchmarkReport,
+  outputPath: string,
+  outputDir: string
+): Promise<void> {
+  if (report.resolvedExecutionMode !== "live") {
+    return;
+  }
+
+  const catalog = await loadConnectorCatalog();
+  const groupedEntries = new Map<string, BenchmarkReportEntry[]>();
+  for (const entry of report.entries) {
+    if (!entry.connectorId) {
+      continue;
+    }
+
+    const existing = groupedEntries.get(entry.connectorId) ?? [];
+    existing.push(entry);
+    groupedEntries.set(entry.connectorId, existing);
+  }
+
+  const certificationDir = join(outputDir, "certification");
+  await mkdir(certificationDir, { recursive: true });
+  const indexEntries: BenchmarkCertificationIndexEntry[] = [];
+  let updatedCatalog = catalog;
+
+  for (const connector of catalog.connectors) {
+    const connectorEntries = groupedEntries.get(connector.id);
+    if (!connectorEntries) {
+      continue;
+    }
+
+    const passed = getConnectorBenchmarkPassStatus(connectorEntries);
+    const generatedAt = new Date().toISOString();
+    const updatedConnector = updateConnectorCertification({
+      connector,
+      profile: "benchmark",
+      generatedAt,
+      layerUpdates: {
+        benchmark: {
+          status: passed ? "passed" : "failed",
+          checkedAt: report.generatedAt,
+          freshUntil: addMs(report.generatedAt, BENCHMARK_CERTIFICATION_TTL_MS),
+          artifactPath: outputPath,
+          ...(passed ? {} : { message: "Live benchmark certification thresholds were not met." })
+        }
+      }
+    });
+    const manifestResult = await persistCertificationManifest({
+      connector: {
+        ...updatedConnector,
+        ephemeral: false
+      },
+      profile: "benchmark",
+      outputDir: certificationDir,
+      profilePassed: passed,
+      updatedConnector
+    });
+    const finalConnector = updateConnectorCertification({
+      connector: updatedConnector,
+      profile: "benchmark",
+      generatedAt,
+      manifestPath: manifestResult.manifestPath,
+      layerUpdates: {}
+    });
+    updatedCatalog = {
+      ...updatedCatalog,
+      connectors: updatedCatalog.connectors
+        .map((candidate) => (candidate.id === finalConnector.id ? finalConnector : candidate))
+        .sort((left, right) => left.id.localeCompare(right.id))
+    };
+
+    indexEntries.push({
+      connectorId: connector.id,
+      status: passed ? "passed" : "failed",
+      manifestPath: manifestResult.manifestPath
+    });
+  }
+
+  if (report.skippedConnectorIds?.length) {
+    for (const connectorId of report.skippedConnectorIds) {
+      indexEntries.push({
+        connectorId,
+        status: "skipped",
+        reason: report.skippedConnectorReasons?.[connectorId]
+      });
+    }
+  }
+
+  if (indexEntries.length === 0) {
+    return;
+  }
+
+  await saveConnectorCatalog(updatedCatalog);
+  await writeFile(
+    join(certificationDir, `benchmark-certification-index-${Date.now()}.json`),
+    `${JSON.stringify(
+      {
+        generatedAt: new Date().toISOString(),
+        reportPath: outputPath,
+        connectors: indexEntries
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
   );
 }
 
@@ -548,162 +699,144 @@ export async function benchmarkCommand(args: string[]): Promise<number> {
   }
 
   try {
-    const env = process.env as Record<string, string | undefined>;
-    const profileResolution = await buildBenchmarkProfiles(options, env);
-    const evaluationTier = getEvaluationTierForProviderMode(profileResolution.resolvedExecutionMode);
-    const entryThreshold = getActionabilityThreshold(evaluationTier);
-    const resolvedOutputDir = resolve(process.cwd(), options.outputDir);
-    const transcriptOutputDir = join(resolvedOutputDir, "transcripts");
-    const debugOutputDir = join(resolvedOutputDir, "debug");
-    await mkdir(transcriptOutputDir, { recursive: true });
-    await mkdir(debugOutputDir, { recursive: true });
-
-    const profiles = profileResolution.profiles;
-    const reportEntries: BenchmarkReportEntry[] = [];
-    const totalEntries = BUILTIN_ADAPTER_IDS.reduce(
-      (total, adapterId) => total + BENCHMARK_TOPICS_BY_ADAPTER[adapterId].length * profiles.length,
-      0
+    const result = await runBenchmarkSuite(options, process.env as Record<string, string | undefined>);
+    await persistBenchmarkCertificationMetadata(
+      result.report,
+      result.outputPath,
+      resolve(process.cwd(), options.outputDir)
     );
-    let completedEntries = 0;
+    return result.exitCode;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : "Benchmark command failed.");
+    return 1;
+  }
+}
 
-    for (const profile of profiles) {
-      for (const adapterId of BUILTIN_ADAPTER_IDS) {
-        const loadedAdapter = await loadDomainAdapter(adapterId);
-        const adapter = profile.connector
-          ? applyConnectorToAdapter(loadedAdapter, profile.connector)
-          : loadedAdapter;
-        const providerRegistry = createProviderRegistryForRun({
-          adapter,
-          providerMode: profile.resolvedExecutionMode,
-          env: {
-            ...env,
-            ...profile.envOverlay
-          },
-          connectorByProviderId: profile.connector
-            ? { [profile.connector.providerId]: profile.connector }
-            : undefined
-        });
-        const adapterTopics = BENCHMARK_TOPICS_BY_ADAPTER[adapterId];
+export async function runBenchmarkSuite(
+  options: BenchmarkCliOptions,
+  env: Record<string, string | undefined> = process.env as Record<string, string | undefined>
+): Promise<{
+  report: BenchmarkReport;
+  outputPath: string;
+  exitCode: number;
+}> {
+  const profileResolution = await buildBenchmarkProfiles(options, env);
+  const evaluationTier = getEvaluationTierForProviderMode(profileResolution.resolvedExecutionMode);
+  const entryThreshold = getActionabilityThreshold(evaluationTier);
+  const resolvedOutputDir = resolve(process.cwd(), options.outputDir);
+  const transcriptOutputDir = join(resolvedOutputDir, "transcripts");
+  const debugOutputDir = join(resolvedOutputDir, "debug");
+  await mkdir(transcriptOutputDir, { recursive: true });
+  await mkdir(debugOutputDir, { recursive: true });
 
-        for (const topic of adapterTopics) {
-          completedEntries += 1;
-          const progressTopic = formatProgressTopic(topic);
-          const entryId = `${profile.providerId}-${adapterId}-${completedEntries}`;
-          const runId = `benchmark-${entryId}`;
-          const progressPrefix = `[${completedEntries}/${totalEntries}] ${adapterId}/${profile.label} — "${progressTopic}"`;
-          const expectedTranscriptPath = join(transcriptOutputDir, `${runId}.transcript.json`);
+  const profiles = profileResolution.profiles;
+  const reportEntries: BenchmarkReportEntry[] = [];
+  const totalEntries = BUILTIN_ADAPTER_IDS.reduce(
+    (total, adapterId) => total + BENCHMARK_TOPICS_BY_ADAPTER[adapterId].length * profiles.length,
+    0
+  );
+  let completedEntries = 0;
 
-          console.log(`${progressPrefix} starting...`);
+  for (const profile of profiles) {
+    for (const adapterId of BUILTIN_ADAPTER_IDS) {
+      const loadedAdapter = await loadDomainAdapter(adapterId);
+      const adapter = profile.connector
+        ? applyConnectorToAdapter(loadedAdapter, profile.connector)
+        : loadedAdapter;
+      const providerRegistry = createProviderRegistryForRun({
+        adapter,
+        providerMode: profile.resolvedExecutionMode,
+        env: {
+          ...env,
+          ...profile.envOverlay
+        },
+        connectorByProviderId: profile.connector
+          ? { [profile.connector.providerId]: profile.connector }
+          : undefined
+      });
+      const adapterTopics = BENCHMARK_TOPICS_BY_ADAPTER[adapterId];
 
-          try {
-            const result = await withTimeout(
-              runDiscussion({
-                adapter,
-                topic,
-                providerRegistry,
-                runId,
-                evaluationTier,
-                metadata: {
-                  benchmarkEntryId: entryId,
-                  evaluationTier,
-                  providerMode: options.executionMode,
-                  executionMode: options.executionMode,
-                  resolvedExecutionMode: profile.resolvedExecutionMode,
-                  providerId: profile.providerId,
-                  connectorId: profile.connectorId,
-                  credentialSource: profile.credentialSource,
-                  activeConnectorId: profileResolution.activeConnectorId,
-                  certificationScope: profileResolution.certificationScope
-                },
-                config: {
-                  qualityGate: {
-                    enabled: true,
-                    threshold: entryThreshold
-                  },
-                  transcript: {
-                    persistToFile: true,
-                    outputDir: transcriptOutputDir,
-                    format: "json"
-                  }
-                }
-              }),
-              ENTRY_TIMEOUT_MS,
-              `Run timed out after ${Math.floor(ENTRY_TIMEOUT_MS / 1000)} seconds`
-            );
+      for (const topic of adapterTopics) {
+        completedEntries += 1;
+        const progressTopic = formatProgressTopic(topic);
+        const entryId = `${profile.providerId}-${adapterId}-${completedEntries}`;
+        const runId = `benchmark-${entryId}`;
+        const progressPrefix = `[${completedEntries}/${totalEntries}] ${adapterId}/${profile.label} — "${progressTopic}"`;
+        const expectedTranscriptPath = join(transcriptOutputDir, `${runId}.transcript.json`);
 
-            const inputTokens = result.context.transcript.messages.reduce(
-              (total, message) => total + (message.usage?.inputTokens ?? 0),
-              0
-            );
-            const outputTokens = result.context.transcript.messages.reduce(
-              (total, message) => total + (message.usage?.outputTokens ?? 0),
-              0
-            );
-            const actionability = (result.context.transcript.metadata as { qualityGate?: unknown } | undefined)
-              ?.qualityGate as ActionabilityEvaluation | undefined;
-            const resolvedActionability =
-              actionability ??
-              createEmptyActionability(
-                evaluationTier,
-                entryThreshold,
-                "Actionability metadata was not recorded."
-              );
+        console.log(`${progressPrefix} starting...`);
 
-            const entry: BenchmarkReportEntry = {
-              entryId,
-              adapterId,
-              providerId: profile.providerId,
-              connectorId: profile.connectorId,
-              credentialSource: profile.credentialSource,
+        try {
+          const result = await withTimeout(
+            runDiscussion({
+              adapter,
               topic,
-              inputTokens,
-              outputTokens,
-              tokenBudgetPassed: inputTokens <= TARGET_INPUT_TOKENS,
-              actionability: resolvedActionability,
-              failureReasons: [...resolvedActionability.failureReasons],
-              transcriptPath: result.persistedPath
-            };
-
-            if (!entry.actionability.passed) {
-              entry.debugArtifactPath = await persistDebugArtifact(debugOutputDir, {
-                generatedAt: new Date().toISOString(),
-                entryId,
+              providerRegistry,
+              runId,
+              evaluationTier,
+              metadata: {
+                benchmarkEntryId: entryId,
                 evaluationTier,
                 providerMode: options.executionMode,
                 executionMode: options.executionMode,
                 resolvedExecutionMode: profile.resolvedExecutionMode,
+                providerId: profile.providerId,
                 connectorId: profile.connectorId,
                 credentialSource: profile.credentialSource,
-                certificationScope: profileResolution.certificationScope,
                 activeConnectorId: profileResolution.activeConnectorId,
-                adapterId,
-                providerId: profile.providerId,
-                topic,
-                transcriptPath: result.persistedPath,
-                failureReasons: entry.failureReasons,
-                providerInvocationIds: getEntryInvocationIds(result.context.transcript),
-                providerModels: getEntryProviderModels(result.context.transcript),
-                totalLatencyMs: getEntryLatencyMs(result.context.transcript),
-                actionability: entry.actionability
-              });
-            }
+                certificationScope: profileResolution.certificationScope
+              },
+              config: {
+                qualityGate: {
+                  enabled: true,
+                  threshold: entryThreshold
+                },
+                transcript: {
+                  persistToFile: true,
+                  outputDir: transcriptOutputDir,
+                  format: "json"
+                }
+              }
+            }),
+            ENTRY_TIMEOUT_MS,
+            `Run timed out after ${Math.floor(ENTRY_TIMEOUT_MS / 1000)} seconds`
+          );
 
-            reportEntries.push(entry);
-
-            console.log(
-              `${progressPrefix} done (${outputTokens} out tokens, actionability: ${entry.actionability.score.toFixed(2)})`
+          const inputTokens = result.context.transcript.messages.reduce(
+            (total, message) => total + (message.usage?.inputTokens ?? 0),
+            0
+          );
+          const outputTokens = result.context.transcript.messages.reduce(
+            (total, message) => total + (message.usage?.outputTokens ?? 0),
+            0
+          );
+          const actionability = (result.context.transcript.metadata as { qualityGate?: unknown } | undefined)
+            ?.qualityGate as ActionabilityEvaluation | undefined;
+          const resolvedActionability =
+            actionability ??
+            createEmptyActionability(
+              evaluationTier,
+              entryThreshold,
+              "Actionability metadata was not recorded."
             );
-          } catch (error) {
-            const errorMessage =
-              error instanceof Error ? error.message : "Unknown benchmark entry failure.";
-            const transcript = await readTranscriptIfExists(expectedTranscriptPath);
-            const actionability = transcript
-              ? (((transcript.metadata as { qualityGate?: unknown } | undefined)
-                  ?.qualityGate as ActionabilityEvaluation | undefined) ??
-                createEmptyActionability(evaluationTier, entryThreshold, errorMessage))
-              : createEmptyActionability(evaluationTier, entryThreshold, errorMessage);
-            const failureReasons = [...new Set([...actionability.failureReasons, errorMessage])];
-            const debugArtifactPath = await persistDebugArtifact(debugOutputDir, {
+
+          const entry: BenchmarkReportEntry = {
+            entryId,
+            adapterId,
+            providerId: profile.providerId,
+            connectorId: profile.connectorId,
+            credentialSource: profile.credentialSource,
+            topic,
+            inputTokens,
+            outputTokens,
+            tokenBudgetPassed: inputTokens <= TARGET_INPUT_TOKENS,
+            actionability: resolvedActionability,
+            failureReasons: [...resolvedActionability.failureReasons],
+            transcriptPath: result.persistedPath
+          };
+
+          if (!entry.actionability.passed) {
+            entry.debugArtifactPath = await persistDebugArtifact(debugOutputDir, {
               generatedAt: new Date().toISOString(),
               entryId,
               evaluationTier,
@@ -717,80 +850,118 @@ export async function benchmarkCommand(args: string[]): Promise<number> {
               adapterId,
               providerId: profile.providerId,
               topic,
-              transcriptPath: (await fileExists(expectedTranscriptPath)) ? expectedTranscriptPath : undefined,
-              error: errorMessage,
-              failureReasons,
-              providerInvocationIds: getEntryInvocationIds(transcript),
-              providerModels: getEntryProviderModels(transcript),
-              totalLatencyMs: getEntryLatencyMs(transcript),
-              actionability
+              transcriptPath: result.persistedPath,
+              failureReasons: entry.failureReasons,
+              providerInvocationIds: getEntryInvocationIds(result.context.transcript),
+              providerModels: getEntryProviderModels(result.context.transcript),
+              totalLatencyMs: getEntryLatencyMs(result.context.transcript),
+              actionability: entry.actionability
             });
-
-            reportEntries.push({
-              entryId,
-              adapterId,
-              providerId: profile.providerId,
-              connectorId: profile.connectorId,
-              credentialSource: profile.credentialSource,
-              topic,
-              inputTokens: 0,
-              outputTokens: 0,
-              tokenBudgetPassed: true,
-              actionability,
-              failureReasons,
-              transcriptPath: (await fileExists(expectedTranscriptPath)) ? expectedTranscriptPath : undefined,
-              debugArtifactPath,
-              error: errorMessage
-            });
-
-            console.log(`${progressPrefix} failed (${errorMessage})`);
           }
+
+          reportEntries.push(entry);
+
+          console.log(
+            `${progressPrefix} done (${outputTokens} out tokens, actionability: ${entry.actionability.score.toFixed(2)})`
+          );
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown benchmark entry failure.";
+          const transcript = await readTranscriptIfExists(expectedTranscriptPath);
+          const actionability = transcript
+            ? (((transcript.metadata as { qualityGate?: unknown } | undefined)
+                ?.qualityGate as ActionabilityEvaluation | undefined) ??
+              createEmptyActionability(evaluationTier, entryThreshold, errorMessage))
+            : createEmptyActionability(evaluationTier, entryThreshold, errorMessage);
+          const failureReasons = [...new Set([...actionability.failureReasons, errorMessage])];
+          const debugArtifactPath = await persistDebugArtifact(debugOutputDir, {
+            generatedAt: new Date().toISOString(),
+            entryId,
+            evaluationTier,
+            providerMode: options.executionMode,
+            executionMode: options.executionMode,
+            resolvedExecutionMode: profile.resolvedExecutionMode,
+            connectorId: profile.connectorId,
+            credentialSource: profile.credentialSource,
+            certificationScope: profileResolution.certificationScope,
+            activeConnectorId: profileResolution.activeConnectorId,
+            adapterId,
+            providerId: profile.providerId,
+            topic,
+            transcriptPath: (await fileExists(expectedTranscriptPath)) ? expectedTranscriptPath : undefined,
+            error: errorMessage,
+            failureReasons,
+            providerInvocationIds: getEntryInvocationIds(transcript),
+            providerModels: getEntryProviderModels(transcript),
+            totalLatencyMs: getEntryLatencyMs(transcript),
+            actionability
+          });
+
+          reportEntries.push({
+            entryId,
+            adapterId,
+            providerId: profile.providerId,
+            connectorId: profile.connectorId,
+            credentialSource: profile.credentialSource,
+            topic,
+            inputTokens: 0,
+            outputTokens: 0,
+            tokenBudgetPassed: true,
+            actionability,
+            failureReasons,
+            transcriptPath: (await fileExists(expectedTranscriptPath)) ? expectedTranscriptPath : undefined,
+            debugArtifactPath,
+            error: errorMessage
+          });
+
+          console.log(`${progressPrefix} failed (${errorMessage})`);
         }
       }
     }
-
-    const meanInputTokens =
-      reportEntries.reduce((total, entry) => total + entry.inputTokens, 0) / reportEntries.length;
-    const meanActionabilityScore =
-      reportEntries.reduce((total, entry) => total + entry.actionability.score, 0) /
-      reportEntries.length;
-
-    const report: BenchmarkReport = {
-      generatedAt: new Date().toISOString(),
-      evaluationTier,
-      providerMode: options.executionMode,
-      executionMode: options.executionMode,
-      resolvedExecutionMode: profileResolution.resolvedExecutionMode,
-      certificationScope: profileResolution.certificationScope,
-      activeConnectorId: profileResolution.activeConnectorId,
-      providerIds: [...new Set(reportEntries.map((entry) => entry.providerId))],
-      rubricVersion: ACTIONABILITY_RUBRIC_VERSION,
-      baselineInputTokens: BASELINE_INPUT_TOKENS,
-      targetInputTokens: TARGET_INPUT_TOKENS,
-      actionabilityThreshold: entryThreshold,
-      ...(evaluationTier === "live_certification"
-        ? { certificationMeanThreshold: LIVE_CERTIFICATION_MEAN_THRESHOLD }
-        : {}),
-      meanInputTokens: Number(meanInputTokens.toFixed(2)),
-      meanActionabilityScore: Number(meanActionabilityScore.toFixed(2)),
-      ...(profileResolution.skippedConnectorIds?.length
-        ? {
-            skippedConnectorIds: profileResolution.skippedConnectorIds,
-            skippedConnectorReasons: profileResolution.skippedConnectorReasons
-          }
-        : {}),
-      entries: reportEntries
-    };
-
-    const outputPath = join(resolvedOutputDir, `v02-benchmark-${Date.now()}.json`);
-    await writeFile(outputPath, JSON.stringify(report, null, 2), "utf8");
-
-    renderSummaryTable(reportEntries, evaluationTier);
-    console.log(`\nReport written: ${outputPath}`);
-
-    return getReportPassStatus(report) ? 0 : 1;
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : "Benchmark command failed.");
-    return 1;
   }
+
+  const meanInputTokens =
+    reportEntries.reduce((total, entry) => total + entry.inputTokens, 0) / reportEntries.length;
+  const meanActionabilityScore =
+    reportEntries.reduce((total, entry) => total + entry.actionability.score, 0) /
+    reportEntries.length;
+
+  const report: BenchmarkReport = {
+    generatedAt: new Date().toISOString(),
+    evaluationTier,
+    providerMode: options.executionMode,
+    executionMode: options.executionMode,
+    resolvedExecutionMode: profileResolution.resolvedExecutionMode,
+    certificationScope: profileResolution.certificationScope,
+    activeConnectorId: profileResolution.activeConnectorId,
+    providerIds: [...new Set(reportEntries.map((entry) => entry.providerId))],
+    rubricVersion: ACTIONABILITY_RUBRIC_VERSION,
+    baselineInputTokens: BASELINE_INPUT_TOKENS,
+    targetInputTokens: TARGET_INPUT_TOKENS,
+    actionabilityThreshold: entryThreshold,
+    ...(evaluationTier === "live_certification"
+      ? { certificationMeanThreshold: LIVE_CERTIFICATION_MEAN_THRESHOLD }
+      : {}),
+    meanInputTokens: Number(meanInputTokens.toFixed(2)),
+    meanActionabilityScore: Number(meanActionabilityScore.toFixed(2)),
+    ...(profileResolution.skippedConnectorIds?.length
+      ? {
+          skippedConnectorIds: profileResolution.skippedConnectorIds,
+          skippedConnectorReasons: profileResolution.skippedConnectorReasons
+        }
+      : {}),
+    entries: reportEntries
+  };
+
+  const outputPath = join(resolvedOutputDir, `v02-benchmark-${Date.now()}.json`);
+  await writeFile(outputPath, JSON.stringify(report, null, 2), "utf8");
+
+  renderSummaryTable(reportEntries, evaluationTier);
+  console.log(`\nReport written: ${outputPath}`);
+
+  return {
+    report,
+    outputPath,
+    exitCode: getReportPassStatus(report) ? 0 : 1
+  };
 }
