@@ -1,8 +1,11 @@
+import type { RunAgentOverrideMap } from "../run/prepare-run";
+
 export interface ApiRunStartRequest {
   adapterId: string;
   topic: string;
   connectorId?: string;
   model?: string;
+  agentOverrides?: RunAgentOverrideMap;
 }
 
 export interface ApiRunListEntry {
@@ -23,6 +26,31 @@ export interface ApiRunCompleteEventMessage {
   endedAt?: string;
   persistedPath?: string;
 }
+
+export interface ApiRunInjectionRequest {
+  content: string;
+  fromLabel?: string;
+  targetPhaseId?: string;
+}
+
+export interface ApiRunSteerRequest {
+  agentId: string;
+  directive: string;
+  turnsRemaining?: number;
+}
+
+export interface ApiRunLifecycleEventMessage {
+  runId: string;
+  currentPhaseId?: string;
+  currentRoundId?: string;
+  turnIndex: number;
+  resumedFromPause?: boolean;
+}
+
+export type ApiRunStreamEvent =
+  | { type: "turn" | "synthesis" | "error" | "injection"; message: import("../types").Message }
+  | { type: "pause" | "resume" | "interrupt"; message: ApiRunLifecycleEventMessage }
+  | { type: "complete"; message: ApiRunCompleteEventMessage };
 
 export interface ApiConnectorListEntry {
   id: string;

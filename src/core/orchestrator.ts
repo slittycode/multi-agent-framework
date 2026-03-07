@@ -5,9 +5,11 @@ import { persistTranscript } from "../transcript/file-persistor";
 import { appendMessage, finalizeTranscript, initializeTranscript } from "../transcript/transcript-store";
 import type {
   DomainAdapter,
+  InterTurnHook,
   JudgeRoundRecord,
   Message,
   OrchestratorConfig,
+  RunLifecycleEvent,
   RunContext,
   RunId,
   Transcript
@@ -33,6 +35,8 @@ export interface RunDiscussionInput {
   metadata?: Record<string, unknown>;
   evaluationTier?: ActionabilityEvaluationTier;
   onMessage?: (message: Message) => void;
+  onEvent?: (event: RunLifecycleEvent) => void;
+  interTurnHook?: InterTurnHook;
 }
 
 export interface RunDiscussionResult {
@@ -306,8 +310,14 @@ export async function runDiscussion(input: RunDiscussionInput): Promise<RunDiscu
         topic: input.topic,
         providerRegistry: input.providerRegistry,
         retriever,
-        onMessage: input.onMessage
+        onMessage: input.onMessage,
+        onEvent: input.onEvent,
+        interTurnHook: input.interTurnHook
       });
+
+      if (context.interrupted) {
+        break;
+      }
 
       let shouldStopAfterRound = false;
       if (config.judge) {

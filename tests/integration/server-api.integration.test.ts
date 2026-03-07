@@ -1,9 +1,17 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { setTimeout as delay } from "node:timers/promises";
 
+import { runDiscussion } from "../../src/core/orchestrator";
 import { saveConnectorCatalog } from "../../src/connectors/catalog";
+import { ProviderRegistry } from "../../src/providers/provider-registry";
+import type {
+  ProviderClient,
+  ProviderGenerateRequest,
+  ProviderGenerateResult
+} from "../../src/providers/provider-client";
 import { startApiServer, type ServerRunExecutorInput } from "../../src/server/app";
 import { persistTranscript } from "../../src/transcript/file-persistor";
 import { appendMessage, finalizeTranscript, initializeTranscript } from "../../src/transcript/transcript-store";
@@ -173,8 +181,161 @@ function createControlledExecutor(runsDir: string) {
   };
 }
 
+class RecordingGeminiProvider implements ProviderClient {
+  readonly id = "gemini";
+  readonly requests: ProviderGenerateRequest[] = [];
+
+  async generate(request: ProviderGenerateRequest): Promise<ProviderGenerateResult> {
+    this.requests.push(request);
+
+    if (request.phaseId === "judge") {
+      return {
+        content: JSON.stringify({
+          finished: false,
+          rationale: "keep going"
+        }),
+        provider: "gemini",
+        model: "gemini-test-model"
+      };
+    }
+
+    if (request.phaseId === "synthesis") {
+      return {
+        content: JSON.stringify({
+          summary: `Synthesis for ${request.runId}.`,
+          verdict: "Wrap with a concise recommendation.",
+          recommendations: [
+            {
+              text: "Capture the next practical step.",
+              priority: "high"
+            }
+          ]
+        }),
+        provider: "gemini",
+        model: "gemini-test-model"
+      };
+    }
+
+    return {
+      content: `${request.agent.id}|${request.phaseId}|persona=${request.agent.persona}|system=${request.systemPrompt ?? ""}`,
+      provider: "gemini",
+      model: "gemini-test-model",
+      invocationId: `gemini-inv-${request.turnIndex ?? this.requests.length}`
+    };
+  }
+}
+
+function createOrchestratedExecutor(provider: RecordingGeminiProvider) {
+  let releaseStart: (() => void) | undefined;
+  const startGate = new Promise<void>((resolve) => {
+    releaseStart = resolve;
+  });
+
+  return {
+    provider,
+    releaseStart() {
+      releaseStart?.();
+    },
+    runExecutor: async ({
+      preparedRun,
+      onEvent,
+      onMessage,
+      interTurnHook
+    }: ServerRunExecutorInput) => {
+      await startGate;
+
+      const result = await runDiscussion({
+        adapter: preparedRun.adapter,
+        topic: preparedRun.topic,
+        runId: preparedRun.runId,
+        providerRegistry: new ProviderRegistry([provider]),
+        config: preparedRun.runConfig,
+        evaluationTier: preparedRun.evaluationTier,
+        metadata: preparedRun.metadata,
+        onEvent,
+        onMessage,
+        interTurnHook
+      });
+
+      return {
+        transcript: result.context.transcript,
+        persistedPath: result.persistedPath
+      };
+    }
+  };
+}
+
+function createSseObserver(url: string) {
+  const events: Array<{ type: string; message: unknown }> = [];
+  const waiters = new Map<string, Array<(event: { type: string; message: unknown }) => void>>();
+  const decoder = new TextDecoder();
+
+  const completion = (async () => {
+    const response = await fetch(url);
+    expect(response.status).toBe(200);
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("SSE response body is missing.");
+    }
+
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      while (buffer.includes("\n\n")) {
+        const separatorIndex = buffer.indexOf("\n\n");
+        const chunk = buffer.slice(0, separatorIndex);
+        buffer = buffer.slice(separatorIndex + 2);
+
+        const dataLine = chunk
+          .split("\n")
+          .find((line) => line.startsWith("data: "));
+        if (!dataLine) {
+          continue;
+        }
+
+        const event = JSON.parse(dataLine.slice("data: ".length)) as {
+          type: string;
+          message: unknown;
+        };
+        events.push(event);
+
+        const typedWaiters = waiters.get(event.type);
+        if (typedWaiters && typedWaiters.length > 0) {
+          const nextWaiter = typedWaiters.shift();
+          nextWaiter?.(event);
+        }
+      }
+    }
+
+    return events;
+  })();
+
+  return {
+    waitForType(type: string): Promise<{ type: string; message: unknown }> {
+      const existing = events.find((event) => event.type === type);
+      if (existing) {
+        return Promise.resolve(existing);
+      }
+
+      return new Promise((resolve) => {
+        const typedWaiters = waiters.get(type) ?? [];
+        typedWaiters.push(resolve);
+        waiters.set(type, typedWaiters);
+      });
+    },
+    done: completion,
+    events
+  };
+}
+
 describe("integration/server-api", () => {
-  test("serves health, CORS, connectors, and phase-two placeholders", async () => {
+  test("serves health, CORS, connectors, and adapter introspection", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "maf-server-api-health-"));
 
     try {
@@ -255,15 +416,26 @@ describe("integration/server-api", () => {
           certificationProfile: "full"
         });
 
-        const injectResponse = await fetch(`${server.url}/api/runs/demo-run/inject`, {
-          method: "POST"
-        });
-        expect(injectResponse.status).toBe(501);
+        const adaptersResponse = await fetch(`${server.url}/api/adapters`);
+        expect(adaptersResponse.status).toBe(200);
+        expect(await adaptersResponse.json()).toEqual([
+          "ableton-feedback",
+          "creative-writing",
+          "general-debate"
+        ]);
 
-        const interruptResponse = await fetch(`${server.url}/api/runs/demo-run/interrupt`, {
-          method: "POST"
+        const adapterResponse = await fetch(`${server.url}/api/adapters/general-debate`);
+        expect(adapterResponse.status).toBe(200);
+        const adapter = (await adapterResponse.json()) as Record<string, unknown>;
+        expect(adapter).toMatchObject({
+          id: "general-debate",
+          synthesisAgentId: "synthesiser"
         });
-        expect(interruptResponse.status).toBe(501);
+        expect(Array.isArray(adapter.agents)).toBe(true);
+        expect(Array.isArray(adapter.rounds)).toBe(true);
+
+        const missingAdapterResponse = await fetch(`${server.url}/api/adapters/does-not-exist`);
+        expect(missingAdapterResponse.status).toBe(404);
 
         const missingResponse = await fetch(`${server.url}/api/runs/does-not-exist`);
         expect(missingResponse.status).toBe(404);
@@ -493,6 +665,292 @@ describe("integration/server-api", () => {
         await server.stop();
       }
     } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test("queues targeted injections, applies startup overrides and steer directives, and replays injection SSE events", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "maf-server-api-engage-"));
+    const runsDir = join(cwd, "runs");
+    await mkdir(runsDir, { recursive: true });
+    const executor = createOrchestratedExecutor(new RecordingGeminiProvider());
+
+    try {
+      const server = await startApiServer({
+        cwd,
+        port: 0,
+        runExecutor: executor.runExecutor
+      });
+
+      try {
+        const startResponse = await fetch(`${server.url}/api/runs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            adapterId: "general-debate",
+            topic: "How should teams track roadmap risk?",
+            agentOverrides: {
+              advocate: {
+                persona: "Measured and implementation-focused.",
+                systemPromptSuffix: "Add one concrete implementation detail in every turn."
+              },
+              critic: {
+                systemPrompt: "Full critic replacement prompt."
+              }
+            }
+          })
+        });
+
+        expect(startResponse.status).toBe(202);
+        const started = (await startResponse.json()) as { runId: string };
+
+        const injectResponse = await fetch(`${server.url}/api/runs/${started.runId}/inject`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            content: "Address delivery risk explicitly.",
+            fromLabel: "User",
+            targetPhaseId: "challenge"
+          })
+        });
+        expect(injectResponse.status).toBe(200);
+        const queuedInjection = (await injectResponse.json()) as { injectionId: string };
+
+        const steerResponse = await fetch(`${server.url}/api/runs/${started.runId}/steer`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            agentId: "advocate",
+            directive: "Emphasize operational risk.",
+            turnsRemaining: 1
+          })
+        });
+        expect(steerResponse.status).toBe(200);
+        expect(await steerResponse.json()).toEqual({
+          status: "queued",
+          agentId: "advocate",
+          turnsRemaining: 1
+        });
+
+        executor.releaseStart();
+
+        await delay(25);
+
+        const completedRunResponse = await fetch(`${server.url}/api/runs/${started.runId}`);
+        expect(completedRunResponse.status).toBe(200);
+        const completedRun = (await completedRunResponse.json()) as Transcript;
+
+        const injectionIndex = completedRun.messages.findIndex((message) => message.kind === "injection");
+        const firstChallengeIndex = completedRun.messages.findIndex(
+          (message) => message.phaseId === "challenge" && message.kind !== "injection"
+        );
+        expect(injectionIndex).toBeGreaterThanOrEqual(0);
+        expect(firstChallengeIndex).toBeGreaterThan(injectionIndex);
+        expect(completedRun.messages[injectionIndex]).toMatchObject({
+          from: "User",
+          kind: "injection",
+          content: "Address delivery risk explicitly.",
+          metadata: {
+            injectionId: queuedInjection.injectionId
+          }
+        });
+
+        const advocateOpeningRequest = executor.provider.requests.find(
+          (request) => request.phaseId === "opening" && request.agent.id === "advocate"
+        );
+        const advocateChallengeRequest = executor.provider.requests.find(
+          (request) => request.phaseId === "challenge" && request.agent.id === "advocate"
+        );
+        const criticOpeningRequest = executor.provider.requests.find(
+          (request) => request.phaseId === "opening" && request.agent.id === "critic"
+        );
+
+        expect(advocateOpeningRequest?.agent.persona).toBe(
+          "Measured and implementation-focused."
+        );
+        expect(advocateOpeningRequest?.systemPrompt).toContain(
+          "Add one concrete implementation detail in every turn."
+        );
+        expect(advocateOpeningRequest?.systemPrompt).toContain("Emphasize operational risk.");
+        expect(advocateChallengeRequest?.systemPrompt).not.toContain("Emphasize operational risk.");
+        expect(criticOpeningRequest?.systemPrompt).toBe("Full critic replacement prompt.");
+
+        const replayStreamResponse = await fetch(`${server.url}/api/runs/${started.runId}/stream`);
+        expect(replayStreamResponse.status).toBe(200);
+        const replayEvents = parseSsePayload(await replayStreamResponse.text());
+        expect(replayEvents.some((event) => event.type === "injection")).toBe(true);
+      } finally {
+        await server.stop();
+      }
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test("pauses at the inter-turn hook and resumes through the API", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "maf-server-api-pause-"));
+    const runsDir = join(cwd, "runs");
+    await mkdir(runsDir, { recursive: true });
+    const executor = createOrchestratedExecutor(new RecordingGeminiProvider());
+
+    try {
+      const server = await startApiServer({
+        cwd,
+        port: 0,
+        runExecutor: executor.runExecutor,
+        heartbeatIntervalMs: 5
+      });
+
+      try {
+        const startResponse = await fetch(`${server.url}/api/runs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            adapterId: "general-debate",
+            topic: "Pause and resume topic"
+          })
+        });
+
+        expect(startResponse.status).toBe(202);
+        const started = (await startResponse.json()) as { runId: string };
+
+        const pauseResponse = await fetch(`${server.url}/api/runs/${started.runId}/pause`, {
+          method: "POST"
+        });
+        expect(pauseResponse.status).toBe(200);
+        expect(await pauseResponse.json()).toEqual({
+          status: "paused"
+        });
+
+        const observer = createSseObserver(`${server.url}/api/runs/${started.runId}/stream`);
+
+        executor.releaseStart();
+
+        await observer.waitForType("pause");
+
+        const pausedRunResponse = await fetch(`${server.url}/api/runs/${started.runId}`);
+        expect(pausedRunResponse.status).toBe(200);
+        const pausedRun = (await pausedRunResponse.json()) as Transcript;
+        expect(pausedRun.messages).toHaveLength(0);
+        expect(pausedRun.status).toBe("running");
+
+        const resumeResponse = await fetch(`${server.url}/api/runs/${started.runId}/resume`, {
+          method: "POST"
+        });
+        expect(resumeResponse.status).toBe(200);
+        expect(await resumeResponse.json()).toEqual({
+          status: "resumed"
+        });
+
+        const events = await observer.done;
+        expect(events.map((event) => event.type)).toContain("pause");
+        expect(events.map((event) => event.type)).toContain("resume");
+        expect(events.at(-1)?.type).toBe("complete");
+      } finally {
+        await server.stop();
+      }
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test("interrupts a paused run, emits lifecycle SSE events, and warns when targeted injections are dropped", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "maf-server-api-interrupt-"));
+    const runsDir = join(cwd, "runs");
+    await mkdir(runsDir, { recursive: true });
+    const executor = createOrchestratedExecutor(new RecordingGeminiProvider());
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => undefined);
+
+    try {
+      const server = await startApiServer({
+        cwd,
+        port: 0,
+        runExecutor: executor.runExecutor,
+        heartbeatIntervalMs: 5
+      });
+
+      try {
+        const startResponse = await fetch(`${server.url}/api/runs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            adapterId: "general-debate",
+            topic: "Interrupt topic"
+          })
+        });
+
+        expect(startResponse.status).toBe(202);
+        const started = (await startResponse.json()) as { runId: string };
+
+        const injectResponse = await fetch(`${server.url}/api/runs/${started.runId}/inject`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            content: "Hold for the challenge phase.",
+            targetPhaseId: "challenge"
+          })
+        });
+        expect(injectResponse.status).toBe(200);
+        const queuedInjection = (await injectResponse.json()) as { injectionId: string };
+
+        const pauseResponse = await fetch(`${server.url}/api/runs/${started.runId}/pause`, {
+          method: "POST"
+        });
+        expect(pauseResponse.status).toBe(200);
+
+        const observer = createSseObserver(`${server.url}/api/runs/${started.runId}/stream`);
+
+        executor.releaseStart();
+        await observer.waitForType("pause");
+
+        const interruptResponse = await fetch(`${server.url}/api/runs/${started.runId}/interrupt`, {
+          method: "POST"
+        });
+        expect(interruptResponse.status).toBe(200);
+        expect(await interruptResponse.json()).toEqual({
+          status: "interrupting",
+          resumedFromPause: true
+        });
+
+        const events = await observer.done;
+        expect(events.map((event) => event.type)).toEqual([
+          "pause",
+          "resume",
+          "interrupt",
+          "synthesis",
+          "complete"
+        ]);
+
+        const completedRunResponse = await fetch(`${server.url}/api/runs/${started.runId}`);
+        expect(completedRunResponse.status).toBe(200);
+        const completedRun = (await completedRunResponse.json()) as Transcript;
+        expect(completedRun.messages.every((message) => message.kind !== "agent_turn")).toBe(true);
+        expect(completedRun.messages.at(-1)?.kind).toBe("synthesis");
+
+        expect(warnSpy).toHaveBeenCalled();
+        const warningText = warnSpy.mock.calls
+          .flat()
+          .map((value) => String(value))
+          .join(" ");
+        expect(warningText).toContain(queuedInjection.injectionId);
+        expect(warningText).toContain("challenge");
+      } finally {
+        await server.stop();
+      }
+    } finally {
+      warnSpy.mockRestore();
       await rm(cwd, { recursive: true, force: true });
     }
   });

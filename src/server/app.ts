@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+import { listBuiltinAdapterIds, loadDomainAdapter } from "../adapters/adapter-loader";
 import { listAvailableConnectors } from "../connectors/connector-resolution";
 import {
   assertExecutionReady,
@@ -8,7 +9,12 @@ import {
   prepareRunExecution,
   type PreparedRunExecution
 } from "../run/prepare-run";
-import type { Message, Transcript } from "../types";
+import type {
+  InterTurnHook,
+  Message,
+  RunLifecycleEvent,
+  Transcript
+} from "../types";
 import { formatConnectorListResponse } from "./connectors-response";
 import {
   filterRunListEntries,
@@ -20,8 +26,11 @@ import { ServerRunManager } from "./run-manager";
 import type {
   ApiConnectorListEntry,
   ApiRunCompleteEventMessage,
+  ApiRunInjectionRequest,
   ApiRunListEntry,
-  ApiRunStartRequest
+  ApiRunStartRequest,
+  ApiRunSteerRequest,
+  ApiRunStreamEvent
 } from "./types";
 
 const DEFAULT_SERVER_PORT = 3001;
@@ -33,6 +42,8 @@ export interface ServerRunExecutorInput {
   request: ApiRunStartRequest;
   preparedRun: PreparedRunExecution;
   onMessage: (message: Message) => void;
+  onEvent?: (event: RunLifecycleEvent) => void;
+  interTurnHook?: InterTurnHook;
 }
 
 export interface ServerRunExecutorResult {
@@ -104,10 +115,6 @@ function notFoundResponse(origin?: string): Response {
   return jsonResponse(404, { error: "Not Found" }, origin);
 }
 
-function notImplementedResponse(origin?: string): Response {
-  return jsonResponse(501, { error: "Not Implemented" }, origin);
-}
-
 async function readPackageVersion(cwd: string): Promise<string> {
   try {
     const raw = await readFile(join(cwd, "package.json"), "utf8");
@@ -120,12 +127,15 @@ async function readPackageVersion(cwd: string): Promise<string> {
   }
 }
 
-function deriveMessageEventType(message: Message): "turn" | "synthesis" | "error" {
+function deriveMessageEventType(message: Message): "turn" | "synthesis" | "error" | "injection" {
   if (message.kind === "synthesis") {
     return "synthesis";
   }
   if (message.kind === "error") {
     return "error";
+  }
+  if (message.kind === "injection") {
+    return "injection";
   }
   return "turn";
 }
@@ -144,10 +154,12 @@ function buildExpectedPersistedPath(cwd: string, preparedRun: PreparedRunExecuti
 }
 
 function createDefaultRunExecutor(): ServerRunExecutor {
-  return async ({ preparedRun, onMessage }) => {
+  return async ({ preparedRun, onEvent, onMessage, interTurnHook }) => {
     const result = await executePreparedRun({
       preparedRun,
-      onMessage
+      onMessage,
+      onEvent,
+      interTurnHook
     });
 
     return {
@@ -173,6 +185,36 @@ function parseRunStartRequest(payload: unknown): ApiRunStartRequest {
     typeof body.model === "string" && body.model.trim().length > 0
       ? body.model.trim()
       : undefined;
+  const rawAgentOverrides =
+    typeof body.agentOverrides === "object" && body.agentOverrides !== null
+      ? (body.agentOverrides as Record<string, unknown>)
+      : undefined;
+  const agentOverrides =
+    rawAgentOverrides && Object.keys(rawAgentOverrides).length > 0
+      ? Object.fromEntries(
+          Object.entries(rawAgentOverrides).map(([agentId, override]) => {
+            if (typeof override !== "object" || override === null) {
+              throw new Error(`agentOverrides.${agentId} must be an object.`);
+            }
+
+            const candidate = override as Record<string, unknown>;
+            return [
+              agentId,
+              {
+                ...(typeof candidate.systemPrompt === "string"
+                  ? { systemPrompt: candidate.systemPrompt }
+                  : {}),
+                ...(typeof candidate.systemPromptSuffix === "string"
+                  ? { systemPromptSuffix: candidate.systemPromptSuffix }
+                  : {}),
+                ...(typeof candidate.persona === "string"
+                  ? { persona: candidate.persona }
+                  : {})
+              }
+            ];
+          })
+        )
+      : undefined;
 
   if (!adapterId) {
     throw new Error("adapterId is required.");
@@ -185,7 +227,62 @@ function parseRunStartRequest(payload: unknown): ApiRunStartRequest {
     adapterId,
     topic,
     connectorId,
-    model
+    model,
+    ...(agentOverrides ? { agentOverrides } : {})
+  };
+}
+
+function parseInjectRequest(payload: unknown): ApiRunInjectionRequest {
+  if (typeof payload !== "object" || payload === null) {
+    throw new Error("Request body must be a JSON object.");
+  }
+
+  const body = payload as Record<string, unknown>;
+  const content = typeof body.content === "string" ? body.content.trim() : "";
+  const fromLabel =
+    typeof body.fromLabel === "string" && body.fromLabel.trim().length > 0
+      ? body.fromLabel.trim()
+      : undefined;
+  const targetPhaseId =
+    typeof body.targetPhaseId === "string" && body.targetPhaseId.trim().length > 0
+      ? body.targetPhaseId.trim()
+      : undefined;
+
+  if (!content) {
+    throw new Error("content is required.");
+  }
+
+  return {
+    content,
+    fromLabel,
+    targetPhaseId
+  };
+}
+
+function parseSteerRequest(payload: unknown): ApiRunSteerRequest {
+  if (typeof payload !== "object" || payload === null) {
+    throw new Error("Request body must be a JSON object.");
+  }
+
+  const body = payload as Record<string, unknown>;
+  const agentId = typeof body.agentId === "string" ? body.agentId.trim() : "";
+  const directive = typeof body.directive === "string" ? body.directive.trim() : "";
+  const turnsRemaining =
+    typeof body.turnsRemaining === "number" && Number.isInteger(body.turnsRemaining)
+      ? body.turnsRemaining
+      : 3;
+
+  if (!agentId) {
+    throw new Error("agentId is required.");
+  }
+  if (!directive) {
+    throw new Error("directive is required.");
+  }
+
+  return {
+    agentId,
+    directive,
+    turnsRemaining
   };
 }
 
@@ -209,7 +306,12 @@ function calculateRunMetrics(transcript: Transcript): RunMetric[] {
   >();
 
   for (const message of transcript.messages) {
-    if (message.from === "orchestrator" || message.from === "system" || message.from === "user") {
+    if (
+      message.from === "orchestrator" ||
+      message.from === "system" ||
+      message.from === "user" ||
+      message.kind === "injection"
+    ) {
       continue;
     }
 
@@ -237,6 +339,21 @@ function calculateRunMetrics(transcript: Transcript): RunMetric[] {
   }));
 }
 
+function toApiRunStreamEvent(event: RunLifecycleEvent): ApiRunStreamEvent {
+  return {
+    type: event.type,
+    message: event.message
+  };
+}
+
+function sendSseEvent(
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  payload: ApiRunStreamEvent,
+  encoder: TextEncoder
+): void {
+  controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+}
+
 function createCompleteOnlyStream(
   transcript: Transcript,
   completeMessage: ApiRunCompleteEventMessage,
@@ -251,16 +368,46 @@ function createCompleteOnlyStream(
   const stream = new ReadableStream({
     start(controller) {
       for (const message of transcript.messages) {
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ type: deriveMessageEventType(message), message })}\n\n`
-          )
+        sendSseEvent(
+          controller,
+          {
+            type: deriveMessageEventType(message),
+            message
+          },
+          encoder
         );
       }
 
-      controller.enqueue(
-        encoder.encode(`data: ${JSON.stringify({ type: "complete", message: completeMessage })}\n\n`)
+      sendSseEvent(
+        controller,
+        {
+          type: "complete",
+          message: completeMessage
+        },
+        encoder
       );
+      controller.close();
+    }
+  });
+
+  return new Response(stream, { status: 200, headers });
+}
+
+function createEventReplayStream(
+  events: ApiRunStreamEvent[],
+  origin: string | undefined
+): Response {
+  const headers = buildCorsHeaders(origin);
+  headers.set("Content-Type", "text/event-stream");
+  headers.set("Cache-Control", "no-cache");
+  headers.set("Connection", "keep-alive");
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      for (const event of events) {
+        sendSseEvent(controller, event, encoder);
+      }
       controller.close();
     }
   });
@@ -270,7 +417,7 @@ function createCompleteOnlyStream(
 
 function createLiveStream(input: {
   runId: string;
-  transcript: Transcript;
+  events: ApiRunStreamEvent[];
   runManager: ServerRunManager;
   requestSignal: AbortSignal;
   heartbeatIntervalMs: number;
@@ -305,15 +452,15 @@ function createLiveStream(input: {
         }
       };
 
-      const sendEvent = (payload: unknown) => {
+      const sendEvent = (payload: ApiRunStreamEvent) => {
         if (closed) {
           return;
         }
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+        sendSseEvent(controller, payload, encoder);
       };
 
-      for (const message of input.transcript.messages) {
-        sendEvent({ type: deriveMessageEventType(message), message });
+      for (const event of input.events) {
+        sendEvent(event);
       }
 
       if (!input.runManager.isActive(input.runId)) {
@@ -326,12 +473,11 @@ function createLiveStream(input: {
       }
 
       unsubscribe = input.runManager.subscribe(input.runId, {
-        onMessage: (message) => {
-          sendEvent({ type: deriveMessageEventType(message), message });
-        },
-        onComplete: (message) => {
-          sendEvent({ type: "complete", message });
-          close();
+        onEvent: (event) => {
+          sendEvent(event);
+          if (event.type === "complete") {
+            close();
+          }
         }
       });
 
@@ -385,6 +531,23 @@ export async function startApiServer(
         return jsonResponse(200, response, origin);
       }
 
+      if (segments.length === 2 && segments[0] === "api" && segments[1] === "adapters") {
+        if (request.method === "GET") {
+          return jsonResponse(200, listBuiltinAdapterIds(), origin);
+        }
+      }
+
+      if (segments.length === 3 && segments[0] === "api" && segments[1] === "adapters") {
+        if (request.method === "GET") {
+          try {
+            const adapter = await loadDomainAdapter(segments[2] ?? "", { cwd });
+            return jsonResponse(200, adapter, origin);
+          } catch {
+            return notFoundResponse(origin);
+          }
+        }
+      }
+
       if (segments.length === 2 && segments[0] === "api" && segments[1] === "runs") {
         if (request.method === "GET") {
           const persistedEntries = await readPersistedRunEntries(runsDir);
@@ -422,6 +585,7 @@ export async function startApiServer(
               executionMode: "auto",
               connectorId: runRequest.connectorId,
               model: runRequest.model,
+              agentOverrides: runRequest.agentOverrides,
               cwd,
               env,
               requireStoredConnector: true
@@ -445,6 +609,7 @@ export async function startApiServer(
           }
 
           runManager.createRun(preparedRun, runRequest);
+          const interTurnHook = runManager.createInterTurnHook(preparedRun.runId);
 
           void (async () => {
             try {
@@ -453,7 +618,14 @@ export async function startApiServer(
                 preparedRun,
                 onMessage: (message) => {
                   runManager.appendMessage(preparedRun.runId, message);
-                }
+                },
+                onEvent: (event) => {
+                  runManager.recordLifecycleEvent(
+                    preparedRun.runId,
+                    toApiRunStreamEvent(event)
+                  );
+                },
+                interTurnHook
               });
               runManager.completeRun(preparedRun.runId, result.transcript, result.persistedPath);
             } catch (error) {
@@ -478,15 +650,152 @@ export async function startApiServer(
 
       if (segments.length >= 3 && segments[0] === "api" && segments[1] === "runs") {
         const runId = segments[2] ?? "";
-
-        if (segments.length === 4 && request.method === "POST") {
-          if (segments[3] === "inject" || segments[3] === "interrupt") {
-            return notImplementedResponse(origin);
-          }
-        }
-
         const state = runManager.getRun(runId);
         const transcript = state?.transcript ?? (await readPersistedTranscript(runsDir, runId));
+
+        if (segments.length === 4 && request.method === "POST") {
+          if (segments[3] === "inject") {
+            if (!state) {
+              return transcript
+                ? jsonResponse(409, { error: "Run is already completed." }, origin)
+                : notFoundResponse(origin);
+            }
+
+            let injectRequest: ApiRunInjectionRequest;
+            try {
+              injectRequest = parseInjectRequest(await parseJsonBody(request));
+            } catch (error) {
+              return jsonResponse(
+                400,
+                { error: error instanceof Error ? error.message : "Invalid request body." },
+                origin
+              );
+            }
+
+            try {
+              const injectionId = runManager.queueInjection(runId, injectRequest);
+              return jsonResponse(200, { injectionId, status: "queued" }, origin);
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "Unable to queue injection.";
+              if (message.includes("not found")) {
+                return notFoundResponse(origin);
+              }
+              if (message.includes("completed")) {
+                return jsonResponse(409, { error: message }, origin);
+              }
+              return jsonResponse(400, { error: message }, origin);
+            }
+          }
+
+          if (segments[3] === "pause") {
+            if (!state) {
+              return transcript
+                ? jsonResponse(409, { error: "Run is not currently running." }, origin)
+                : notFoundResponse(origin);
+            }
+
+            try {
+              runManager.pauseRun(runId);
+              return jsonResponse(200, { status: "paused" }, origin);
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "Unable to pause run.";
+              if (message.includes("already paused")) {
+                return jsonResponse(400, { error: message }, origin);
+              }
+              return jsonResponse(409, { error: message }, origin);
+            }
+          }
+
+          if (segments[3] === "resume") {
+            if (!state) {
+              return transcript
+                ? jsonResponse(400, { error: "Run is not paused." }, origin)
+                : notFoundResponse(origin);
+            }
+
+            try {
+              runManager.resumeRun(runId);
+              return jsonResponse(200, { status: "resumed" }, origin);
+            } catch (error) {
+              return jsonResponse(
+                400,
+                { error: error instanceof Error ? error.message : "Unable to resume run." },
+                origin
+              );
+            }
+          }
+
+          if (segments[3] === "interrupt") {
+            if (!state) {
+              return transcript
+                ? jsonResponse(409, { error: "Run is already completed." }, origin)
+                : notFoundResponse(origin);
+            }
+
+            try {
+              const result = runManager.requestInterrupt(runId);
+              return jsonResponse(
+                200,
+                {
+                  status: "interrupting",
+                  ...(result.resumedFromPause ? { resumedFromPause: true } : {})
+                },
+                origin
+              );
+            } catch (error) {
+              return jsonResponse(
+                409,
+                { error: error instanceof Error ? error.message : "Unable to interrupt run." },
+                origin
+              );
+            }
+          }
+
+          if (segments[3] === "steer") {
+            if (!state) {
+              return transcript
+                ? jsonResponse(409, { error: "Run is already completed." }, origin)
+                : notFoundResponse(origin);
+            }
+
+            let steerRequest: ApiRunSteerRequest;
+            try {
+              steerRequest = parseSteerRequest(await parseJsonBody(request));
+            } catch (error) {
+              return jsonResponse(
+                400,
+                { error: error instanceof Error ? error.message : "Invalid request body." },
+                origin
+              );
+            }
+
+            try {
+              const turnsRemaining = steerRequest.turnsRemaining ?? 3;
+              runManager.queueSteer(runId, {
+                ...steerRequest,
+                turnsRemaining
+              });
+              return jsonResponse(
+                200,
+                {
+                  status: "queued",
+                  agentId: steerRequest.agentId,
+                  turnsRemaining
+                },
+                origin
+              );
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "Unable to steer run.";
+              if (message.includes("Unknown agentId")) {
+                return jsonResponse(404, { error: message }, origin);
+              }
+              if (message.includes("completed")) {
+                return jsonResponse(409, { error: message }, origin);
+              }
+              return jsonResponse(400, { error: message }, origin);
+            }
+          }
+        }
 
         if (!transcript) {
           return notFoundResponse(origin);
@@ -501,6 +810,10 @@ export async function startApiServer(
         }
 
         if (segments.length === 4 && segments[3] === "stream" && request.method === "GET") {
+          if (state && state.events.length > 0 && !runManager.isActive(runId)) {
+            return createEventReplayStream(state.events, origin);
+          }
+
           const completeMessage =
             runManager.buildCompleteMessage(runId) ?? {
               runId,
@@ -513,7 +826,7 @@ export async function startApiServer(
           if (state && runManager.isActive(runId)) {
             return createLiveStream({
               runId,
-              transcript,
+              events: runManager.getEvents(runId),
               runManager,
               requestSignal: request.signal,
               heartbeatIntervalMs,

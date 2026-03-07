@@ -20,6 +20,7 @@ export interface BuildProviderRequestInput extends BuildTurnPromptInput {
   runId: ProviderGenerateRequest["runId"];
   turnIndex: number;
   transcriptMessages?: Message[];
+  systemPromptOverride?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -141,7 +142,12 @@ export function filterVisibleTranscriptForAgent(
   receiverAgentId: AgentId
 ): Message[] {
   return transcript.messages.filter((message) => {
-    if (message.from === "user" || message.from === "system" || message.from === "orchestrator") {
+    if (
+      message.from === "user" ||
+      message.from === "system" ||
+      message.from === "orchestrator" ||
+      message.kind === "injection"
+    ) {
       return true;
     }
 
@@ -315,7 +321,7 @@ export function buildProviderRequest(input: BuildProviderRequestInput): Provider
   return {
     runId: input.runId,
     agent: input.agent,
-    systemPrompt: input.agent.systemPrompt,
+    systemPrompt: input.systemPromptOverride ?? input.agent.systemPrompt,
     prompt: buildTurnPrompt({
       adapter: input.adapter,
       topic: input.topic,

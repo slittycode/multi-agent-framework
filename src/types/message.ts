@@ -10,6 +10,7 @@ export type MessageKind =
   | "agent_turn"
   | "challenge"
   | "rebuttal"
+  | "injection"
   | "synthesis"
   | "system"
   | "error";
@@ -21,7 +22,7 @@ export interface Message {
   phaseId?: string;
   turnIndex: number;
   timestamp: string;
-  from: AgentId | "user" | "orchestrator" | "system";
+  from: AgentId | "user" | "orchestrator" | "system" | string;
   to?: AgentId | "all" | "synthesis";
   kind: MessageKind;
   content: string;

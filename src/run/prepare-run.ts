@@ -22,7 +22,20 @@ import {
   type ProviderSupportDescriptor
 } from "../providers/provider-bootstrap";
 import type { ProviderRegistry } from "../providers/provider-registry";
-import type { DomainAdapter, Message } from "../types";
+import type {
+  DomainAdapter,
+  InterTurnHook,
+  Message,
+  RunLifecycleEvent
+} from "../types";
+
+export interface RunAgentOverride {
+  systemPrompt?: string;
+  systemPromptSuffix?: string;
+  persona?: string;
+}
+
+export type RunAgentOverrideMap = Record<string, RunAgentOverride>;
 
 export interface PrepareRunExecutionInput {
   adapterSource: string;
@@ -42,6 +55,7 @@ export interface PrepareRunExecutionInput {
   cwd?: string;
   env?: Record<string, string | undefined>;
   requireStoredConnector?: boolean;
+  agentOverrides?: RunAgentOverrideMap;
 }
 
 export interface PreparedRunExecution {
@@ -59,6 +73,8 @@ export interface PreparedRunExecution {
 export interface ExecutePreparedRunInput {
   preparedRun: PreparedRunExecution;
   onMessage?: (message: Message) => void;
+  onEvent?: (event: RunLifecycleEvent) => void;
+  interTurnHook?: InterTurnHook;
 }
 
 export function assertExecutionReady(resolution: ResolvedExecutionContext): void {
@@ -97,6 +113,49 @@ function applyModelOverride(adapter: DomainAdapter, model?: string): DomainAdapt
           ...agent.llm,
           model: normalizedModel
         }
+      };
+    })
+  };
+}
+
+function applyAgentOverrides(
+  adapter: DomainAdapter,
+  overrides?: RunAgentOverrideMap
+): DomainAdapter {
+  if (!overrides || Object.keys(overrides).length === 0) {
+    return adapter;
+  }
+
+  const unknownAgentIds = Object.keys(overrides).filter(
+    (agentId) => !adapter.agents.some((agent) => agent.id === agentId)
+  );
+  if (unknownAgentIds.length > 0) {
+    throw new Error(`Unknown agent override ids: ${unknownAgentIds.join(", ")}.`);
+  }
+
+  return {
+    ...adapter,
+    agents: adapter.agents.map((agent) => {
+      const override = overrides[agent.id];
+      if (!override) {
+        return agent;
+      }
+
+      const systemPrompt =
+        typeof override.systemPrompt === "string" && override.systemPrompt.trim().length > 0
+          ? override.systemPrompt.trim()
+          : typeof override.systemPromptSuffix === "string" &&
+              override.systemPromptSuffix.trim().length > 0
+            ? `${agent.systemPrompt}\n\n${override.systemPromptSuffix.trim()}`
+            : agent.systemPrompt;
+
+      return {
+        ...agent,
+        persona:
+          typeof override.persona === "string" && override.persona.trim().length > 0
+            ? override.persona.trim()
+            : agent.persona,
+        systemPrompt
       };
     })
   };
@@ -202,7 +261,7 @@ export async function prepareRunExecution(
   const resolvedAdapter = resolution.connector
     ? applyConnectorToAdapter(loadedAdapter, resolution.connector)
     : loadedAdapter;
-  const adapter = applyModelOverride(resolvedAdapter, input.model);
+  const adapter = applyAgentOverrides(applyModelOverride(resolvedAdapter, input.model), input.agentOverrides);
   const providerSupport = getAdapterProviderCapabilities(adapter);
   const evaluationTier = getEvaluationTierForProviderMode(resolution.resolvedExecutionMode);
 
@@ -243,6 +302,8 @@ export async function executePreparedRun(
     config: input.preparedRun.runConfig,
     evaluationTier: input.preparedRun.evaluationTier,
     metadata: input.preparedRun.metadata,
-    onMessage: input.onMessage
+    onMessage: input.onMessage,
+    onEvent: input.onEvent,
+    interTurnHook: input.interTurnHook
   });
 }

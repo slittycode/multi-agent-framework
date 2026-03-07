@@ -329,4 +329,40 @@ describe("integration/orchestrator-run", () => {
       code: "QUALITY_GATE_FAILED"
     } satisfies Partial<OrchestratorConfigError>);
   });
+
+  test("stops scheduling new turns after an inter-turn interrupt and still runs synthesis", async () => {
+    const adapter = await loadDomainAdapter("general-debate");
+
+    const result = await runDiscussion({
+      adapter,
+      topic: "Should teams centralize incident ownership?",
+      runId: "run-interrupt-hook",
+      providerRegistry: new ProviderRegistry([new MockProvider({ id: "gemini" })]),
+      config: {
+        transcript: {
+          persistToFile: false,
+          outputDir: "./runs",
+          format: "json"
+        }
+      },
+      interTurnHook: async (state) => {
+        if (state.boundary === "turn_complete" && state.completedAgentId === "advocate") {
+          return {
+            interrupt: true
+          };
+        }
+
+        return undefined;
+      }
+    });
+
+    const nonSynthesisMessages = result.context.transcript.messages.filter(
+      (message) => message.kind !== "synthesis"
+    );
+    expect(nonSynthesisMessages).toHaveLength(1);
+    expect(nonSynthesisMessages[0]?.from).toBe("advocate");
+    expect(result.context.interrupted).toBe(true);
+    expect(result.context.transcript.messages.at(-1)?.kind).toBe("synthesis");
+    expect(result.context.transcript.synthesis).toBeDefined();
+  });
 });

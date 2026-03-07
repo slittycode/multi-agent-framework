@@ -25,7 +25,8 @@ export function createRunContext(input: CreateRunContextInput): RunContext {
     transcript: input.transcript,
     currentRoundIndex: 0,
     currentPhaseIndex: 0,
-    status: "idle"
+    status: "idle",
+    interrupted: false
   };
 }
 
@@ -67,5 +68,16 @@ export function updateTranscript(context: RunContext, transcript: Transcript): R
   return {
     ...context,
     transcript
+  };
+}
+
+export function markRunInterrupted(context: RunContext): RunContext {
+  if (context.interrupted) {
+    return context;
+  }
+
+  return {
+    ...context,
+    interrupted: true
   };
 }

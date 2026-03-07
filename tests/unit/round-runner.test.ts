@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
 import { runRound } from "../../src/core/round-runner";
 import { createRunContext, setRunStatus } from "../../src/core/run-context";
@@ -168,6 +168,21 @@ class StaticRetriever implements RetrieverClient {
           snippet: "Outcome data over 12 months."
         }
       ]
+    };
+  }
+}
+
+class PromptTrackingProvider implements ProviderClient {
+  readonly id = "mock";
+  readonly requests: ProviderGenerateRequest[] = [];
+
+  async generate(request: ProviderGenerateRequest): Promise<ProviderGenerateResult> {
+    this.requests.push(request);
+
+    return {
+      content: `${request.agent.id} ${request.phaseId}`,
+      provider: "mock",
+      model: "mock-model-v1"
     };
   }
 }
@@ -443,5 +458,113 @@ describe("core/round-runner", () => {
       | { retrievalWarning?: string }
       | undefined;
     expect(firstMessageMetadata?.retrievalWarning).toContain("no retriever is configured");
+  });
+
+  test("fires inter-turn hooks at phase starts and turn boundaries, and applies a next-turn prompt override once", async () => {
+    const provider = new PromptTrackingProvider();
+    const context = createContext(baseAdapter, baseConfig, "run-round-hook-order");
+    const boundaryEvents: Array<{
+      boundary: string;
+      currentPhaseId?: string;
+      nextAgentId?: string;
+      completedAgentId?: string;
+    }> = [];
+
+    const output = await runRound(context, baseAdapter.rounds[0] as Round, {
+      adapter: baseAdapter,
+      topic: "Test topic",
+      providerRegistry: new ProviderRegistry([provider]),
+      interTurnHook: async (state) => {
+        boundaryEvents.push({
+          boundary: state.boundary,
+          currentPhaseId: state.currentPhaseId,
+          nextAgentId: state.nextAgentId,
+          completedAgentId: state.completedAgentId
+        });
+
+        if (state.boundary === "phase_start" && state.currentPhaseId === "challenge") {
+          return {
+            nextTurnSystemPromptOverrides: {
+              b: "Temporary challenge override."
+            }
+          };
+        }
+
+        return undefined;
+      }
+    });
+
+    expect(boundaryEvents).toEqual([
+      {
+        boundary: "phase_start",
+        currentPhaseId: "opening",
+        nextAgentId: "a",
+        completedAgentId: undefined
+      },
+      {
+        boundary: "turn_complete",
+        currentPhaseId: "opening",
+        nextAgentId: "b",
+        completedAgentId: "a"
+      },
+      {
+        boundary: "turn_complete",
+        currentPhaseId: "opening",
+        nextAgentId: undefined,
+        completedAgentId: "b"
+      },
+      {
+        boundary: "phase_start",
+        currentPhaseId: "challenge",
+        nextAgentId: "b",
+        completedAgentId: undefined
+      },
+      {
+        boundary: "turn_complete",
+        currentPhaseId: "challenge",
+        nextAgentId: "a",
+        completedAgentId: "b"
+      },
+      {
+        boundary: "turn_complete",
+        currentPhaseId: "challenge",
+        nextAgentId: undefined,
+        completedAgentId: "a"
+      }
+    ]);
+
+    const challengeOverrideRequest = provider.requests.find(
+      (request) => request.phaseId === "challenge" && request.agent.id === "b"
+    );
+    const laterChallengeRequest = provider.requests.find(
+      (request) => request.phaseId === "challenge" && request.agent.id === "a"
+    );
+
+    expect(challengeOverrideRequest?.systemPrompt).toBe("Temporary challenge override.");
+    expect(laterChallengeRequest?.systemPrompt).toBe("argue");
+    expect(output.transcript.messages).toHaveLength(4);
+  });
+
+  test("swallows inter-turn hook failures and logs a warning", async () => {
+    const provider = new PromptTrackingProvider();
+    const context = createContext(baseAdapter, baseConfig, "run-round-hook-warning");
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => undefined);
+
+    try {
+      const output = await runRound(context, baseAdapter.rounds[0] as Round, {
+        adapter: baseAdapter,
+        topic: "Test topic",
+        providerRegistry: new ProviderRegistry([provider]),
+        interTurnHook: async () => {
+          throw new Error("hook failure");
+        }
+      });
+
+      expect(output.transcript.messages).toHaveLength(4);
+      expect(warnSpy).toHaveBeenCalled();
+      expect(warnSpy.mock.calls[0]?.[0]).toContain("Inter-turn hook failed");
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });

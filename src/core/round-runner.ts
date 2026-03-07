@@ -1,15 +1,19 @@
 import type {
   DomainAdapter,
+  InterTurnHook,
+  InterTurnPauseResumeOutcome,
+  InterTurnHookResult,
   JudgePhaseRecord,
   Message,
   Round,
   RoundPhase,
+  RunLifecycleEvent,
   RunContext
 } from "../types";
 import type { RetrievedWebSource, RetrieverClient } from "../retrieval/retriever-client";
 import type { ProviderRegistry } from "../providers/provider-registry";
 import { appendMessage } from "../transcript/transcript-store";
-import { advancePhase, updateTranscript } from "./run-context";
+import { advancePhase, markRunInterrupted, updateTranscript } from "./run-context";
 import { runJudgeCheck } from "./judge-runner";
 import { buildProviderRequest, filterVisibleTranscriptForAgent, inferMessageKind } from "./turn-router";
 import { OrchestratorIntegrationError } from "./errors";
@@ -22,6 +26,8 @@ export interface RunRoundDependencies {
   providerRegistry: ProviderRegistry;
   retriever?: RetrieverClient;
   onMessage?: (message: Message) => void;
+  onEvent?: (event: RunLifecycleEvent) => void;
+  interTurnHook?: InterTurnHook;
 }
 
 function getPhaseAgent(adapter: DomainAdapter, phase: RoundPhase, agentId: string): AdapterAgent {
@@ -251,6 +257,120 @@ async function resolveWebEvidenceForTurn(input: {
   }
 }
 
+function buildLifecycleEventMessage(input: {
+  context: RunContext;
+  round: Round;
+  phase: RoundPhase;
+  turnIndex: number;
+  resumedFromPause?: boolean;
+}): RunLifecycleEvent["message"] {
+  return {
+    runId: input.context.runId,
+    currentRoundId: input.round.id,
+    currentPhaseId: input.phase.id,
+    turnIndex: input.turnIndex,
+    ...(input.resumedFromPause !== undefined
+      ? { resumedFromPause: input.resumedFromPause }
+      : {})
+  };
+}
+
+async function invokeInterTurnHookSafely(
+  deps: RunRoundDependencies,
+  input: {
+    context: RunContext;
+    round: Round;
+    phase: RoundPhase;
+    turnIndex: number;
+    boundary: "phase_start" | "turn_complete";
+    nextAgentId?: string;
+    completedAgentId?: string;
+  }
+): Promise<InterTurnHookResult | undefined> {
+  if (!deps.interTurnHook) {
+    return undefined;
+  }
+
+  try {
+    const result = await deps.interTurnHook({
+      runId: input.context.runId,
+      transcript: input.context.transcript,
+      currentPhaseId: input.phase.id,
+      currentRoundId: input.round.id,
+      turnIndex: input.turnIndex,
+      boundary: input.boundary,
+      nextAgentId: input.nextAgentId,
+      completedAgentId: input.completedAgentId
+    });
+
+    return result ?? undefined;
+  } catch (error) {
+    console.warn(
+      `Inter-turn hook failed for run "${input.context.runId}" at ${input.boundary} (${input.phase.id}): ${getErrorMessage(error)}`
+    );
+    return undefined;
+  }
+}
+
+async function applyInterTurnBoundary(input: {
+  context: RunContext;
+  round: Round;
+  phase: RoundPhase;
+  deps: RunRoundDependencies;
+  turnIndex: number;
+  boundary: "phase_start" | "turn_complete";
+  nextAgentId?: string;
+  completedAgentId?: string;
+}): Promise<{
+  context: RunContext;
+  nextTurnSystemPromptOverrides?: Partial<Record<string, string>>;
+}> {
+  let nextContext = input.context;
+  const hookResult = await invokeInterTurnHookSafely(input.deps, input);
+
+  for (const message of hookResult?.injectedMessages ?? []) {
+    const updatedTranscript = appendMessage(nextContext.transcript, message);
+    nextContext = updateTranscript(nextContext, updatedTranscript);
+    input.deps.onMessage?.(message);
+  }
+
+  let pauseOutcome: InterTurnPauseResumeOutcome | void = undefined;
+  if (hookResult?.pause) {
+    input.deps.onEvent?.({
+      type: "pause",
+      message: buildLifecycleEventMessage(input)
+    });
+    pauseOutcome = await hookResult.pause.resumeSignal;
+    input.deps.onEvent?.({
+      type: "resume",
+      message: buildLifecycleEventMessage(input)
+    });
+  }
+
+  const interruptSignal =
+    pauseOutcome && pauseOutcome.interrupt
+      ? { resumedFromPause: pauseOutcome.resumedFromPause }
+      : hookResult?.interrupt === true
+        ? {}
+        : hookResult?.interrupt;
+
+  if (interruptSignal) {
+    nextContext = markRunInterrupted(nextContext);
+    input.deps.onEvent?.({
+      type: "interrupt",
+      message: buildLifecycleEventMessage({
+        ...input,
+        resumedFromPause: interruptSignal.resumedFromPause
+      })
+    });
+  }
+
+  return {
+    context: nextContext,
+    nextTurnSystemPromptOverrides: hookResult?.nextTurnSystemPromptOverrides
+  };
+}
+
 async function runSequentialPhase(
   context: RunContext,
   round: Round,
@@ -259,8 +379,28 @@ async function runSequentialPhase(
   steeringDirectives: string[]
 ): Promise<RunContext> {
   let nextContext = context;
+  let nextTurnSystemPromptOverrides: Partial<Record<string, string>> | undefined;
 
-  for (const agentId of phase.turnOrder) {
+  const phaseStartResult = await applyInterTurnBoundary({
+    context: nextContext,
+    round,
+    phase,
+    deps,
+    turnIndex: nextContext.transcript.messages.length,
+    boundary: "phase_start",
+    nextAgentId: phase.turnOrder[0]
+  });
+  nextContext = phaseStartResult.context;
+  nextTurnSystemPromptOverrides = phaseStartResult.nextTurnSystemPromptOverrides;
+  if (nextContext.interrupted) {
+    return nextContext;
+  }
+
+  for (let index = 0; index < phase.turnOrder.length; index += 1) {
+    const agentId = phase.turnOrder[index];
+    if (!agentId) {
+      continue;
+    }
     const agent = getPhaseAgent(deps.adapter, phase, agentId);
     const turnIndex = nextContext.transcript.messages.length + 1;
     const visibleMessages = filterVisibleTranscriptForAgent(
@@ -289,8 +429,10 @@ async function runSequentialPhase(
       citationsMode: nextContext.config.citations?.mode ?? "transcript_only",
       steeringDirectives,
       webEvidence: webEvidenceResult.sources,
+      systemPromptOverride: nextTurnSystemPromptOverrides?.[agent.id],
       turnIndex
     });
+    nextTurnSystemPromptOverrides = undefined;
 
     const provider = deps.providerRegistry.resolveForAgent(agent);
     const result = await provider.generate(request);
@@ -319,6 +461,22 @@ async function runSequentialPhase(
     const updatedTranscript = appendMessage(nextContext.transcript, message);
     nextContext = updateTranscript(nextContext, updatedTranscript);
     deps.onMessage?.(message);
+
+    const boundaryResult = await applyInterTurnBoundary({
+      context: nextContext,
+      round,
+      phase,
+      deps,
+      turnIndex,
+      boundary: "turn_complete",
+      completedAgentId: agent.id,
+      nextAgentId: phase.turnOrder[index + 1]
+    });
+    nextContext = boundaryResult.context;
+    nextTurnSystemPromptOverrides = boundaryResult.nextTurnSystemPromptOverrides;
+    if (nextContext.interrupted) {
+      break;
+    }
   }
 
   return nextContext;
@@ -331,8 +489,20 @@ async function runFanoutPhase(
   deps: RunRoundDependencies,
   steeringDirectives: string[]
 ): Promise<RunContext> {
+  const phaseStartResult = await applyInterTurnBoundary({
+    context,
+    round,
+    phase,
+    deps,
+    turnIndex: context.transcript.messages.length,
+    boundary: "phase_start"
+  });
+  if (phaseStartResult.context.interrupted) {
+    return phaseStartResult.context;
+  }
+
   const failFast = context.config.failFast ?? false;
-  const transcriptSnapshot = context.transcript;
+  const transcriptSnapshot = phaseStartResult.context.transcript;
   const baseTurnIndex = transcriptSnapshot.messages.length + 1;
   const respondedToMessageId = transcriptSnapshot.messages.at(-1)?.id;
 
@@ -346,11 +516,11 @@ async function runFanoutPhase(
       agent.id
     );
       const webEvidenceResult = await resolveWebEvidenceForTurn({
-        context,
-        round,
-        phase,
-        agent,
-        deps
+      context: phaseStartResult.context,
+      round,
+      phase,
+      agent,
+      deps
       });
 
     const request = buildProviderRequest({
@@ -362,8 +532,8 @@ async function runFanoutPhase(
       agent,
       transcript: transcriptSnapshot,
       transcriptMessages: visibleMessages,
-      contextPolicy: context.config.contextPolicy,
-      citationsMode: context.config.citations?.mode ?? "transcript_only",
+      contextPolicy: phaseStartResult.context.config.contextPolicy,
+      citationsMode: phaseStartResult.context.config.citations?.mode ?? "transcript_only",
       steeringDirectives,
       webEvidence: webEvidenceResult.sources,
       turnIndex
@@ -439,11 +609,22 @@ async function runFanoutPhase(
     }
   }
 
-  let nextContext = context;
+  let nextContext = phaseStartResult.context;
   for (const message of phaseMessages) {
     const updatedTranscript = appendMessage(nextContext.transcript, message);
     nextContext = updateTranscript(nextContext, updatedTranscript);
     deps.onMessage?.(message);
+
+    const boundaryResult = await applyInterTurnBoundary({
+      context: nextContext,
+      round,
+      phase,
+      deps,
+      turnIndex: message.turnIndex,
+      boundary: "turn_complete",
+      completedAgentId: typeof message.from === "string" ? message.from : undefined
+    });
+    nextContext = boundaryResult.context;
   }
 
   return nextContext;
@@ -476,6 +657,10 @@ export async function runRound(
       nextContext = await runFanoutPhase(nextContext, round, phase, deps, steeringDirectives);
     } else {
       nextContext = await runSequentialPhase(nextContext, round, phase, deps, steeringDirectives);
+    }
+
+    if (nextContext.interrupted) {
+      break;
     }
 
     const phaseJudge = nextContext.config.phaseJudge;
